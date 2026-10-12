@@ -4,3 +4,4 @@ python-multipart
 pymupdf
 pydantic
 python-dotenv
+python-pptx
