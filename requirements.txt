@@ -7,3 +7,4 @@ python-dotenv
 openai
 psycopg[binary]
 pytest
+sentence-transformers

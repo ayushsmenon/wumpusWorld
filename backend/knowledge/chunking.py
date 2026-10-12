@@ -35,7 +35,7 @@ class TextChunker:
             pieces.extend(_split_section(section, self.chunk_size, self.overlap))
 
         chunks: list[KnowledgeChunk] = []
-        for index, piece in enumerate(pieces):
+        for piece in pieces:
             if len(piece) < self.min_chunk_size and chunks:
                 previous = chunks[-1]
                 merged = f"{previous.text}\n\n{piece}"
@@ -44,13 +44,13 @@ class TextChunker:
                     continue
             chunks.append(
                 KnowledgeChunk(
-                    chunk_id=f"{record.file_id}:{record.source_id}:{index}",
+                    chunk_id="",
                     source_id=record.source_id,
                     file_id=record.file_id,
                     course_id=record.course_id,
                     filename=record.filename,
                     text=piece,
-                    chunk_index=index,
+                    chunk_index=0,
                     source_type=record.source_type,
                     source_uri=record.source_uri,
                     page_number=record.page_number,
@@ -60,7 +60,10 @@ class TextChunker:
                     metadata=dict(record.metadata),
                 )
             )
-        return chunks
+        return [
+            replace(chunk, chunk_id=f"{record.file_id}:{record.source_id}:{index}", chunk_index=index)
+            for index, chunk in enumerate(chunks)
+        ]
 
     def chunk_many(self, records: Iterable[ContentRecord]) -> list[KnowledgeChunk]:
         chunks: list[KnowledgeChunk] = []

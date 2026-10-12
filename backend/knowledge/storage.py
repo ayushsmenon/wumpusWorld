@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 import os
 from collections import defaultdict
+import math
 from typing import Any, Iterator
 
 from .contracts import KnowledgeChunk, RetrievalResult
@@ -16,6 +17,8 @@ class StorageError(RuntimeError):
 
 
 class PostgresKnowledgeStore:
+    dimensions = 384
+
     def __init__(self, connection_factory: Callable[[], Any]) -> None:
         self._connection_factory = connection_factory
 
@@ -46,12 +49,21 @@ class PostgresKnowledgeStore:
         self,
         chunks: Sequence[KnowledgeChunk],
         embeddings: dict[str, Sequence[float]],
-        embedding_model: str = "text-embedding-3-small",
+        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
     ) -> None:
         if not chunks:
             raise ValueError("Cannot index an empty document; use delete_document for removal")
         if any(chunk.chunk_id not in embeddings for chunk in chunks):
             raise ValueError("An embedding is missing for one or more chunks")
+        if any(
+            len(embeddings[chunk.chunk_id]) != self.dimensions
+            or any(
+                not isinstance(value, (int, float)) or not math.isfinite(value)
+                for value in embeddings[chunk.chunk_id]
+            )
+            for chunk in chunks
+        ):
+            raise ValueError(f"Embeddings must contain finite vectors with {self.dimensions} dimensions")
         first = chunks[0]
         if any(chunk.file_id != first.file_id or chunk.course_id != first.course_id for chunk in chunks):
             raise ValueError("index_document accepts chunks from one file and course at a time")
@@ -125,6 +137,11 @@ class PostgresKnowledgeStore:
         limit: int,
         min_score: float,
     ) -> list[RetrievalResult]:
+        if len(query_embedding) != self.dimensions or any(
+            not isinstance(value, (int, float)) or not math.isfinite(value)
+            for value in query_embedding
+        ):
+            raise ValueError(f"Query embeddings must contain finite vectors with {self.dimensions} dimensions")
         with self._connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
