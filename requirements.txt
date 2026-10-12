@@ -4,7 +4,11 @@ python-multipart
 pymupdf
 pydantic
 python-dotenv
+<<<<<<< HEAD
 openai
 psycopg[binary]
 pytest
 sentence-transformers
+=======
+python-pptx
+>>>>>>> 850c897c0db465990c5cac5f4a3f32ff815b1647
