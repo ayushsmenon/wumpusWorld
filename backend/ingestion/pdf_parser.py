@@ -1,4 +1,3 @@
-
 import statistics
 from collections import Counter
 from pathlib import Path
@@ -10,16 +9,15 @@ from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
 
 MIN_TEXT_CHARS = 25
 BIG_IMAGE_FRACTION = 0.05
-
 DIAGRAM_EXTRA_DRAWINGS = 10
-
 SCAN_IMAGE_FRACTION = 0.5
+# a real table has most cells filled; a mostly-empty grid is a diagram
 MIN_FILLED_FRACTION = 0.5
 RENDER_DPI = 150
 
 
 def find_repeated_images(doc) -> set:
-
+    # remove logos and repettive imgs as part of the content
     counts = Counter()
     for page in doc:
         for xref in {img[0] for img in page.get_images(full=True)}:
@@ -29,7 +27,6 @@ def find_repeated_images(doc) -> set:
 
 
 def extract_tables(page):
-
     tables, rejected = [], 0
     try:
         for table in page.find_tables().tables:
@@ -48,7 +45,6 @@ def extract_tables(page):
 
 
 def find_images(page, repeated) -> list:
-
     page_area = page.rect.width * page.rect.height
     found = []
     for img in page.get_images(full=True):
@@ -66,11 +62,12 @@ def find_images(page, repeated) -> list:
                 })
     return found
 
+# input for vision
 
-def render_page(page, number, out_dir: Path) -> dict:
 
+def render_page(page, number, out_dir: Path, prefix: str = "page") -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"page_{number:04d}.png"
+    filename = f"{prefix}_{number:04d}.png"
     pix = page.get_pixmap(dpi=RENDER_DPI)
     pix.save(str(out_dir / filename))
     return {"kind": "page_render", "path": f"{out_dir.name}/{filename}",
@@ -78,7 +75,6 @@ def render_page(page, number, out_dir: Path) -> dict:
 
 
 def parse_pdf(path: Path, out_dir: Path) -> list:
-
     try:
         doc = pymupdf.open(path)
     except Exception as e:
@@ -91,7 +87,6 @@ def parse_pdf(path: Path, out_dir: Path) -> list:
             raise EmptyFileError("PDF has no pages")
 
         repeated = find_repeated_images(doc)
-
         drawing_counts = [len(p.get_drawings()) for p in doc]
         baseline = statistics.median(drawing_counts)
 
@@ -111,8 +106,11 @@ def parse_pdf(path: Path, out_dir: Path) -> list:
                 text) < MIN_TEXT_CHARS and biggest > SCAN_IMAGE_FRACTION
             if has_visuals:
                 images.append(render_page(page, number, out_dir))
-            units.append(ParsedUnit("page", number, text,
-                         tables, images, has_visuals, needs_ocr))
+            units.append(ParsedUnit(
+                "page", number, text, tables, images, has_visuals, needs_ocr,
+                metadata={"sparse_grids": sparse_grids,
+                          "drawing_count": drawing_counts[index]},
+            ))
         return units
     finally:
         doc.close()

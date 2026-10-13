@@ -5,3 +5,9 @@ pymupdf
 pydantic
 python-dotenv
 python-pptx
+pillow
+faster-whisper
+torch
+transformers
+accelerate
+num2words
