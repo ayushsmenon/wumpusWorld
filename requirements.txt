@@ -4,6 +4,10 @@ python-multipart
 pymupdf
 pydantic
 python-dotenv
+openai
+psycopg[binary]
+pytest
+sentence-transformers
 python-pptx
 pillow
 faster-whisper

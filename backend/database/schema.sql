@@ -28,13 +28,18 @@ CREATE TABLE topic_prerequisites (
 
 CREATE TABLE content_units (
     id SERIAL PRIMARY KEY,
+    source_id VARCHAR(255) NOT NULL,
+    file_id VARCHAR(255) NOT NULL,
+    course_id VARCHAR(255) NOT NULL,
+    filename VARCHAR(512) NOT NULL,
     topic_id INT REFERENCES topics(id) ON DELETE SET NULL,
     source_type VARCHAR(50) NOT NULL,
-    source_uri VARCHAR(512) NOT NULL,
+    source_uri VARCHAR(512),
     page_number INT CHECK (page_number IS NULL OR page_number >= 1),
     slide_number INT CHECK (slide_number IS NULL OR slide_number >= 1),
     video_timestamp FLOAT CHECK (video_timestamp IS NULL OR video_timestamp >= 0),
     content_text TEXT NOT NULL,
+    content_hash VARCHAR(64),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -43,10 +48,15 @@ CREATE TABLE chunks (
     content_unit_id INT NOT NULL REFERENCES content_units(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL,
     chunk_text TEXT NOT NULL,
-    embedding VECTOR(1536),
+    embedding VECTOR(384),
+    content_hash VARCHAR(64),
+    embedding_model VARCHAR(255),
     metadata JSONB,
     UNIQUE (content_unit_id, chunk_index)
 );
+
+ALTER TABLE content_units
+    ADD CONSTRAINT uq_content_units_course_file_source UNIQUE (course_id, file_id, source_id);
 
 CREATE TABLE questions (
     id SERIAL PRIMARY KEY,
@@ -122,6 +132,7 @@ CREATE TABLE evaluation_logs (
 CREATE INDEX idx_topics_course_id ON topics(course_id);
 CREATE INDEX idx_topics_parent_id ON topics(parent_id);
 CREATE INDEX idx_content_units_topic_id ON content_units(topic_id);
+CREATE INDEX idx_content_units_course_file ON content_units(course_id, file_id);
 CREATE INDEX idx_chunks_content_unit_id ON chunks(content_unit_id);
 CREATE INDEX idx_chunks_embedding_cosine ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX idx_questions_topic_id ON questions(topic_id);
