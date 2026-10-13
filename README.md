@@ -9,10 +9,10 @@ npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173`. It currently uses mock course
-data because the FastAPI backend exposes only `GET /health`. Backend requests
-belong in `frontend/lib/api.js`; set `VITE_API_BASE_URL` when the API is
-available.
+The frontend runs at `http://localhost:5173`. Course creation is currently a
+visual placeholder; persistence and course APIs will be added in a later step.
+Backend requests belong in `frontend/lib/api.js`; set `VITE_API_BASE_URL` when
+the API is available.
 
 Run the backend separately with:
 

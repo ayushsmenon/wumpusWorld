@@ -2,7 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 
 export function AppShell({ children }) {
   return (
-    <div className="app-shell">
+    <div className="home-shell">
       <header className="site-header">
         <Link className="brand" to="/" aria-label="Wumpus World home">
           <span className="brand-mark">W</span>
