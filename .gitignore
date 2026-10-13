@@ -16,3 +16,6 @@ data/
 *.pdf
 *.pptx
 *.mp4
+
+node_modules/
+dist/

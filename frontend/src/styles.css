@@ -1,0 +1,84 @@
+:root {
+  color: #252724;
+  background: #f6f4ee;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --paper: #f6f4ee;
+  --paper-deep: #ece9df;
+  --ink: #252724;
+  --muted: #74766d;
+  --line: #d9d8cf;
+  --sage: #788875;
+  --sage-dark: #4f5e4e;
+  --serif: Georgia, "Times New Roman", serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: var(--paper); }
+a { color: inherit; text-decoration: none; }
+
+.app-shell { min-height: 100vh; }
+.site-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 1320px;
+  padding: 24px 40px;
+}
+.brand { align-items: center; display: inline-flex; font-size: 15px; font-weight: 650; gap: 10px; letter-spacing: -0.01em; }
+.brand-mark {
+  align-items: center;
+  background: var(--sage-dark);
+  border-radius: 50%;
+  color: var(--paper);
+  display: inline-flex;
+  font-family: var(--serif);
+  font-size: 18px;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+.site-nav { display: flex; gap: 24px; }
+.nav-link { color: var(--muted); font-size: 14px; }
+.nav-link.active { color: var(--ink); font-weight: 650; }
+.page-content { margin: 0 auto; max-width: 1320px; padding: 72px 40px 96px; }
+.content-frame { max-width: 1060px; }
+.hero { max-width: 680px; padding-bottom: 76px; }
+.eyebrow { color: var(--sage-dark); font-size: 11px; font-weight: 750; letter-spacing: 0.13em; margin: 0 0 16px; text-transform: uppercase; }
+h1, h2, h3, p { margin-top: 0; }
+h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.035em; }
+h1 { font-size: clamp(44px, 7vw, 76px); line-height: 0.98; margin-bottom: 24px; }
+h2 { font-size: 36px; line-height: 1.05; margin-bottom: 0; }
+h3 { font-family: var(--serif); font-size: 27px; font-weight: 400; letter-spacing: -0.025em; margin: 34px 0 12px; }
+.hero-copy { color: var(--muted); font-size: 17px; line-height: 1.65; max-width: 580px; }
+.section-block { border-top: 1px solid var(--line); padding-top: 28px; }
+.section-heading { align-items: end; display: flex; justify-content: space-between; margin-bottom: 28px; }
+.section-count, .progress-row { color: var(--muted); font-size: 12px; }
+.course-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.course-card { border: 1px solid var(--line); min-height: 260px; padding: 24px; transition: border-color 160ms ease, background 160ms ease; }
+.course-card:hover { background: var(--paper-deep); border-color: var(--sage); }
+.course-card-top, .progress-row { align-items: center; display: flex; justify-content: space-between; }
+.course-kicker { color: var(--sage-dark); font-size: 11px; font-weight: 750; letter-spacing: 0.13em; }
+.course-arrow { color: var(--sage-dark); font-size: 22px; }
+.course-card p { color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 360px; }
+.progress-row { margin-top: 44px; }
+.progress-track { background: var(--paper-deep); height: 4px; margin-top: 10px; overflow: hidden; }
+.progress-track span { background: var(--sage); display: block; height: 100%; }
+.back-link, .text-link { color: var(--sage-dark); font-size: 13px; font-weight: 650; }
+.course-intro { border-bottom: 1px solid var(--line); margin: 38px 0 36px; max-width: 680px; padding-bottom: 40px; }
+.course-intro h1 { font-size: clamp(48px, 8vw, 82px); }
+.workspace-placeholder, .state-panel { border: 1px solid var(--line); padding: 36px; }
+.workspace-placeholder h2, .state-panel h1 { max-width: 560px; }
+.workspace-placeholder p:last-child { color: var(--muted); line-height: 1.65; max-width: 520px; }
+
+@media (max-width: 680px) {
+  .site-header { padding: 20px; }
+  .page-content { padding: 48px 20px 72px; }
+  .hero { padding-bottom: 56px; }
+  .course-grid { grid-template-columns: 1fr; }
+  .section-heading { align-items: start; flex-direction: column; gap: 12px; }
+  h1 { font-size: 52px; }
+}
