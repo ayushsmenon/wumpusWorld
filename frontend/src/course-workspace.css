@@ -2,29 +2,31 @@
 
 :root {
   font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  color: #292c29;
-  background: #ecebe5;
+  color: #183b4a;
+  background: #f4fbf7;
   font-synthesis: none;
-  --ink: #111827;
-  --muted: #6b7280;
-  --faint: #9ca3af;
-  --line: #e5e7eb;
-  --line-dark: #cfd1c9;
-  --paper: #ffffff;
-  --ivory: #f9f9fb;
-  --panel: #f9f9fb;
-  --sage: #667a62;
-  --sage-dark: #4f664c;
-  --sage-soft: #e6ebe2;
-  --sage-faint: #f0f3ed;
+  --ink: #183b4a;
+  --muted: #55756f;
+  --faint: #7b9b94;
+  --line: #c9e2d9;
+  --line-dark: #a9cec1;
+  --paper: #f4fbf7;
+  --ivory: #f8fcfa;
+  --panel: #f8fcfa;
+  --sage: #57cc99;
+  --sage-dark: #22577a;
+  --sage-soft: #dff5e9;
+  --sage-faint: #eefaf4;
+  --teal: #38a3a5;
+  --green: #80ed99;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #ecebe5; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f4fbf7; }
 button, input, textarea { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible {
-  outline: 2px solid #85947f;
+  outline: 2px solid var(--teal);
   outline-offset: 2px;
 }
 
@@ -471,6 +473,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
     box-shadow: 0 18px 50px rgb(17 24 39 / 14%);
     transition: transform .22s ease;
   }
+
   .library-panel { left: 0; }
   .insights-panel { right: 0; }
   .left-collapsed .library-panel { transform: translateX(-105%); }
@@ -478,6 +481,82 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .left-collapsed .collapsed-rail, .insights-collapsed .right-rail { display: none; }
   .resize-handle { display: none; }
   .conversation { padding-left: max(32px, 9vw); padding-right: max(32px, 9vw); }
+}
+
+/* Palette alignment for fixed-color Figma controls. */
+.app-shell {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.library-panel,
+.insights-panel,
+.learning-panel {
+  background: var(--panel);
+}
+
+.learning-panel,
+.library-panel,
+.insights-panel,
+.learning-header,
+.concept-section,
+.progress-section {
+  border-color: var(--line);
+}
+
+.wordmark,
+.breadcrumb strong,
+.panel-title h2,
+.response-content h2,
+.outline-tree > strong {
+  color: var(--ink);
+}
+
+.add-materials,
+.course-selector strong,
+.module-title > strong,
+.file-name,
+.response-content,
+.zoom-controls button,
+.export-button {
+  color: var(--muted);
+}
+
+.add-materials:hover,
+.module-title:hover,
+.file-row:hover,
+.icon-button.quiet:hover,
+.collapsed-rail button:hover,
+.right-rail button:hover {
+  background: var(--sage-faint);
+  color: var(--ink);
+}
+
+.active-module .module-title > strong,
+.file-row.active .file-name,
+.file-row.active .file-type,
+.citation:hover,
+.citation.selected {
+  color: var(--sage-dark);
+}
+
+.active-mark,
+.send-button,
+.mastery-bar span {
+  background: var(--sage-dark);
+}
+
+.processing-label,
+.concept-dot,
+.thinking-dots i {
+  color: var(--teal);
+  background-color: var(--teal);
+}
+
+.export-button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+  opacity: .7;
 }
 
 @media (max-width: 640px) {
