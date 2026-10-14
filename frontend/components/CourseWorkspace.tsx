@@ -8,8 +8,37 @@ import {
   type ReactNode,
 } from "react"
 import { Link } from "react-router-dom"
+import {
+  askTutor,
+  generateAssessment,
+  getLearnerMastery,
+  getRecommendations,
+  submitAssessmentAnswer,
+} from "../lib/api"
 
-type IconName = "plus" | "search" | "folder" | "pdf" | "slides" | "notes" | "more" | "chevron" | "spark" | "paperclip" | "arrow" | "panel" | "focus" | "close" | "check" | "clock" | "book" | "warning" | "minus" | "settings" | "reset" | "download"
+type IconName =
+  | "plus"
+  | "search"
+  | "folder"
+  | "pdf"
+  | "slides"
+  | "notes"
+  | "more"
+  | "chevron"
+  | "spark"
+  | "paperclip"
+  | "arrow"
+  | "panel"
+  | "focus"
+  | "close"
+  | "check"
+  | "clock"
+  | "book"
+  | "warning"
+  | "minus"
+  | "settings"
+  | "reset"
+  | "download"
 
 const iconPaths: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
@@ -128,18 +157,75 @@ function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   )
 }
 
-const files: { name: string; meta: string; type: IconName }[] = []
+interface CitationItem {
+  id: number
+  source_type: string
+  source_uri?: string | null
+  filename?: string | null
+  page_number?: number | null
+  slide_number?: number | null
+  video_timestamp?: number | null
+  topic_title?: string | null
+  location: string
+  label: string
+  text_snippet?: string | null
+}
 
-const graphNodes: { id: string; x: number; y: number; kind: string; r: number }[] = []
+interface ChatMessage {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  citations?: CitationItem[]
+  is_grounded?: boolean
+  out_of_scope?: boolean
+}
 
-const graphEdges: string[][] = []
+interface RecommendationTopic {
+  topic_id: number
+  title: string
+  status: string
+  mastery_score: number
+  confidence: number
+  priority: number
+  reason: string
+  blocking_prerequisites: Array<{ topic_id: number; title: string; mastery_score: number }>
+}
+
+interface WeakTopicItem {
+  topic_id: number
+  title: string
+  mastery_score: number
+  confidence: number
+  deficit: number
+  priority: number
+  root_cause_prerequisites: Array<{ prerequisite_id: number; title: string; mastery_score: number }>
+}
+
+interface AssessmentQuestion {
+  id: number
+  question_type: "MCQ" | "short_answer" | "numerical"
+  difficulty: string
+  prompt: string
+  options?: string[] | null
+  correct_answer: string
+  explanation?: string | null
+}
+
+interface AssessmentData {
+  assessment_id: number
+  student_id: number
+  topic_id: number
+  topic_title: string
+  assessment_type: string
+  questions: AssessmentQuestion[]
+}
 
 function FileRow({
   file,
   active,
   onClick,
 }: {
-  file: typeof files[number]
+  file: { name: string; meta: string; type: IconName }
   active: boolean
   onClick: () => void
 }) {
@@ -161,111 +247,31 @@ function FileRow({
   )
 }
 
-function Citation({
-  children,
-  active,
-  onClick,
-}: {
-  children: ReactNode
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      className={`citation ${active ? "selected" : ""}`}
-      onClick={onClick}
-    >
-      [{children}]
-    </button>
-  )
-}
-
-function KnowledgeGraph({
-  selected,
-  onSelect,
-  query = "",
-  zoom = 1,
-}: {
-  selected: string
-  onSelect: (id: string) => void
-  query?: string
-  zoom?: number
-}) {
-  const byId = Object.fromEntries(graphNodes.map((node) => [node.id, node]))
-  return (
-    <svg
-      aria-label="Interactive concept map"
-      className="graph"
-      role="img"
-      style={{ transform: `scale(${zoom})` }}
-      viewBox="0 0 350 245"
-    >
-      <g className="edges">
-        {graphEdges.map(([from, to]) => (
-          <line
-            key={`${from}-${to}`}
-            x1={byId[from].x}
-            x2={byId[to].x}
-            y1={byId[from].y}
-            y2={byId[to].y}
-          />
-        ))}
-      </g>
-      {graphNodes.map((node) => {
-        const isSelected = selected === node.id
-        return (
-          <g
-            className={`node ${node.kind} ${isSelected ? "selected" : ""} ${
-              query && !node.id.toLowerCase().includes(query.toLowerCase())
-                ? "filtered"
-                : ""
-            }`}
-            key={node.id}
-            onClick={() => onSelect(node.id)}
-            role="button"
-            tabIndex={0}
-          >
-            {isSelected && (
-              <circle
-                className="node-ring"
-                cx={node.x}
-                cy={node.y}
-                r={node.r + 7}
-              />
-            )}
-            <circle cx={node.x} cy={node.y} r={node.r} />
-            <text
-              className={node.x > 250 ? "label-end" : ""}
-              x={node.x > 250 ? node.x - 10 : node.x + 10}
-              y={node.y + 3}
-            >
-              {node.id}
-            </text>
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
-
 export default function CourseWorkspace({
   course,
   onUpload,
 }: {
-  course?: { subject?: string; title: string; description?: string; materials?: { filename: string; file_type: string; status: string; unit_count: number }[] }
+  course?: {
+    id?: string
+    subject?: string
+    title: string
+    description?: string
+    materials?: { filename: string; file_type: string; status: string; unit_count: number }[]
+  }
   onUpload?: (file: File) => Promise<unknown>
 }) {
+  const courseId = course?.id || "1"
+  const studentId = 1
+
   const [activeFile, setActiveFile] = useState("")
   const [query, setQuery] = useState("")
   const [message, setMessage] = useState("")
-  const [selectedCitation, setSelectedCitation] = useState("slides")
-  const [selectedConcept, setSelectedConcept] = useState("")
-  const [conversationStarted, setConversationStarted] = useState(false)
-  const [responseStatus, setResponseStatus] =
-    useState<"idle" | "generating" | "error">("idle")
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [selectedCitationDetail, setSelectedCitationDetail] = useState<CitationItem | null>(null)
+  const [selectedConcept, setSelectedConcept] = useState("Graph traversal")
+  const [responseStatus, setResponseStatus] = useState<"idle" | "generating" | "error">("idle")
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState("")
-  const [sentMessage, setSentMessage] = useState("")
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [masteryOpen, setMasteryOpen] = useState(true)
@@ -277,29 +283,150 @@ export default function CourseWorkspace({
   const [rightWidth, setRightWidth] = useState(30)
   const [masteryHeight, setMasteryHeight] = useState(42)
 
+  const [studyPath, setStudyPath] = useState<RecommendationTopic[]>([])
+  const [weakTopics, setWeakTopics] = useState<WeakTopicItem[]>([])
+  const [nextTopics, setNextTopics] = useState<RecommendationTopic[]>([])
+  const [masteries, setMasteries] = useState<Array<{ topic_id: number; mastery_score: number; confidence: number }>>([])
+
+  const [quizOpen, setQuizOpen] = useState(false)
+  const [quizLoading, setQuizLoading] = useState(false)
+  const [quizData, setQuizData] = useState<AssessmentData | null>(null)
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({})
+  const [quizResults, setQuizResults] = useState<Record<number, { is_correct: boolean; feedback: string; correct_answer: string }>>({})
+  const [submittingQ, setSubmittingQ] = useState<Record<number, boolean>>({})
+
   const visibleFiles = (course?.materials || []).map((material) => ({
     name: material.filename,
     meta: material.status === "parsed" ? `${material.unit_count} pages or slides` : material.status,
-    type: material.file_type === "pptx" ? "slides" as IconName : "pdf" as IconName,
+    type: material.file_type === "pptx" ? ("slides" as IconName) : ("pdf" as IconName),
   }))
+
   const filteredFiles = useMemo(
     () =>
       visibleFiles.filter((file) =>
         file.name.toLowerCase().includes(query.toLowerCase()),
       ),
-    [query],
+    [visibleFiles, query],
   )
+
+  const averageMastery = useMemo(() => {
+    if (!masteries.length) return 0
+    const sum = masteries.reduce((acc, m) => acc + m.mastery_score, 0)
+    return Math.round((sum / masteries.length) * 100)
+  }, [masteries])
+
+  async function loadLearnerInsights() {
+    try {
+      const recRes = await getRecommendations(studentId, courseId)
+      if (recRes) {
+        setStudyPath(recRes.study_path || [])
+        setWeakTopics(recRes.weak_topics || [])
+        setNextTopics(recRes.next_topics || [])
+      }
+      const masteryRes = await getLearnerMastery(studentId, courseId)
+      if (Array.isArray(masteryRes)) {
+        setMasteries(masteryRes)
+      }
+    } catch {
+      setStudyPath([])
+      setWeakTopics([])
+      setNextTopics([])
+      setMasteries([])
+    }
+  }
+
+  useEffect(() => {
+    loadLearnerInsights()
+  }, [courseId])
+
+  async function handleSendMessage(textToSend?: string) {
+    const raw = textToSend !== undefined ? textToSend : message
+    const trimmed = raw.trim()
+    if (!trimmed) return
+
+    const userMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: trimmed,
+    }
+    setMessages((prev) => [...prev, userMsg])
+    setMessage("")
+    setResponseStatus("generating")
+
+    try {
+      const result = await askTutor(trimmed, courseId)
+      const assistantMsg: ChatMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: result.answer,
+        citations: result.citations || [],
+        is_grounded: result.is_grounded,
+        out_of_scope: result.out_of_scope,
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+      if (result.citations && result.citations.length > 0) {
+        setSelectedCitationDetail(result.citations[0])
+      }
+      setResponseStatus("idle")
+    } catch (err) {
+      setResponseStatus("error")
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: "assistant",
+        content: err instanceof Error ? err.message : "Unable to reach grounded tutor service.",
+        is_grounded: false,
+      }
+      setMessages((prev) => [...prev, errorMsg])
+    }
+  }
 
   function submitMessage(event: FormEvent) {
     event.preventDefault()
-    const trimmed = message.trim()
-    if (!trimmed) return
-    setSentMessage(trimmed)
-    setMessage("")
-    setConversationStarted(false)
-    setResponseStatus("error")
-    setMasteryOpen(true)
-    window.setTimeout(() => setMasteryOpen(false), 4200)
+    handleSendMessage()
+  }
+
+  async function startAdaptiveQuiz(topicId: number = 1) {
+    setQuizOpen(true)
+    setQuizLoading(true)
+    setQuizResults({})
+    setQuizAnswers({})
+    try {
+      const assessment = await generateAssessment(studentId, topicId, 3)
+      setQuizData(assessment)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Failed to generate assessment quiz.")
+    } finally {
+      setQuizLoading(false)
+    }
+  }
+
+  async function handleAnswerSubmit(questionId: number) {
+    if (!quizData) return
+    const answer = quizAnswers[questionId]
+    if (!answer || !answer.trim()) return
+
+    setSubmittingQ((prev) => ({ ...prev, [questionId]: true }))
+    try {
+      const evalRes = await submitAssessmentAnswer(
+        studentId,
+        quizData.assessment_id,
+        questionId,
+        answer.trim(),
+      )
+      setQuizResults((prev) => ({
+        ...prev,
+        [questionId]: {
+          is_correct: evalRes.is_correct,
+          feedback: evalRes.feedback,
+          correct_answer: evalRes.correct_answer,
+        },
+      }))
+      await loadLearnerInsights()
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Failed to record student answer.")
+    } finally {
+      setSubmittingQ((prev) => ({ ...prev, [questionId]: false }))
+    }
   }
 
   async function addMaterials(file?: File) {
@@ -317,7 +444,10 @@ export default function CourseWorkspace({
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
-      if (event.key === "Escape") setGraphFullscreen(false)
+      if (event.key === "Escape") {
+        setGraphFullscreen(false)
+        setQuizOpen(false)
+      }
       if ((event.metaKey || event.ctrlKey) && event.key === "\\") {
         event.preventDefault()
         setLeftPanelOpen((open) => !open)
@@ -333,11 +463,6 @@ export default function CourseWorkspace({
       setRightPanelOpen(false)
     }
   }, [])
-
-  function retryResponse() {
-    setResponseStatus("generating")
-    window.setTimeout(() => setResponseStatus("idle"), 1800)
-  }
 
   function beginResize(event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault()
@@ -392,11 +517,55 @@ export default function CourseWorkspace({
     window.addEventListener("pointerup", stopResize)
   }
 
-  function exportGraph() {
-    setUploadError("Graph export is unavailable until concepts are generated.")
+  function renderFormattedAnswer(
+    text: string,
+    citations?: CitationItem[],
+  ) {
+    if (!citations || !citations.length) {
+      return <p>{text}</p>
+    }
+
+    const parts = text.split(/(\[\d+\])/g)
+    return (
+      <div className="rendered-answer">
+        {parts.map((part, idx) => {
+          const match = part.match(/\[(\d+)\]/)
+          if (match) {
+            const cid = parseInt(match[1], 10)
+            const targetCit = citations.find((c) => c.id === cid)
+            return (
+              <button
+                className={`citation ${selectedCitationDetail?.id === cid ? "selected" : ""}`}
+                key={`cit-${idx}`}
+                onClick={() => targetCit && setSelectedCitationDetail(targetCit)}
+                title={targetCit ? targetCit.label : `Citation [${cid}]`}
+                type="button"
+              >
+                [{cid}]
+              </button>
+            )
+          }
+          return <span key={`txt-${idx}`}>{part}</span>
+        })}
+      </div>
+    )
   }
 
-  const relatedConcepts: Record<string, string[]> = {}
+  const graphNodes = useMemo(() => {
+    const list = studyPath.length > 0 ? studyPath : [
+      { topic_id: 1, title: "Graph Traversal", status: "ready_to_learn" },
+      { topic_id: 2, title: "Shortest Paths", status: "blocked" },
+      { topic_id: 3, title: "Spanning Trees", status: "blocked" },
+    ]
+    return list.map((item, idx) => ({
+      id: item.title,
+      topicId: item.topic_id,
+      x: 70 + (idx % 3) * 105,
+      y: 65 + Math.floor(idx / 3) * 75,
+      kind: item.status === "mastered" ? "core" : item.status === "remediation" ? "minor" : "related",
+      r: 10,
+    }))
+  }, [studyPath])
 
   return (
     <main
@@ -484,18 +653,10 @@ export default function CourseWorkspace({
             </button>
           </div>
 
-          <div className="module-group">
-            <button className="module-title">
-              <span>01</span>
-              <strong>Foundations</strong>
-              <Icon name="chevron" size={14} />
-            </button>
-          </div>
-
           <div className="module-group active-module">
             <button className="module-title">
-              <span>02</span>
-              <strong>Graph traversal</strong>
+              <span>01</span>
+              <strong>{course?.title || "Core Syllabus"}</strong>
               <Icon name="chevron" size={14} />
             </button>
             <div className="files-list">
@@ -525,14 +686,6 @@ export default function CourseWorkspace({
               )}
             </div>
           </div>
-
-          <div className="module-group">
-            <button className="module-title">
-              <span>03</span>
-              <strong>Shortest paths</strong>
-              <Icon name="chevron" size={14} />
-            </button>
-          </div>
         </div>
       </aside>
 
@@ -541,9 +694,9 @@ export default function CourseWorkspace({
           <div className="breadcrumb">
             <span>{course?.subject || "Course"}</span>
             <i>/</i>
-            <span>Module 02</span>
+            <span>Module 01</span>
             <i>/</i>
-            <strong>Graph Traversal</strong>
+            <strong>{selectedConcept}</strong>
           </div>
           <div className="header-actions">
             <button
@@ -554,16 +707,12 @@ export default function CourseWorkspace({
               <Icon name="folder" />
             </button>
             <button
-              aria-label="Start a new conversation"
+              aria-label="Start adaptive quiz"
               className="icon-button"
-              onClick={() => {
-                setConversationStarted(false)
-                setSentMessage("")
-                setResponseStatus("idle")
-              }}
-              title="New conversation"
+              onClick={() => startAdaptiveQuiz(1)}
+              title="Launch Adaptive Quiz"
             >
-              <Icon name="plus" />
+              <Icon name="spark" />
             </button>
             <button
               aria-label="Toggle insights panel"
@@ -576,36 +725,24 @@ export default function CourseWorkspace({
         </header>
 
         <div className="conversation">
-          {uploading && (
-            <div className="conversation-status processing-state" role="status">
-              <span className="processing-icon">
-                <span />
+          {uploadError && (
+            <div className="response-error" role="alert">
+              <Icon name="warning" size={15} />
+              <span>
+                <strong>System Notice</strong>
+                {uploadError}
               </span>
-              <div>
-                <strong>Preparing uploaded material</strong>
-                <span>You can keep studying while concepts are extracted.</span>
-              </div>
-            </div>
-          )}
-          {!activeFile && (
-            <div className="conversation-status material-state" role="status">
-              <Icon name="book" size={16} />
-              <div>
-                <strong>No material selected</strong>
-                <span>
-                  Select a source to ground answers in your course content.
-                </span>
-              </div>
+              <button onClick={() => setUploadError("")}>Dismiss</button>
             </div>
           )}
 
-          {!conversationStarted ? (
+          {messages.length === 0 ? (
             <div className="conversation-empty">
-              <span className="empty-kicker">MODULE 02 · GRAPH TRAVERSAL</span>
+              <span className="empty-kicker">{course?.subject || "COURSE"} · ADAPTIVE TUTOR</span>
               <h2>What would you like to understand?</h2>
               <p>
-                Ask about a concept, compare approaches, or test your recall
-                using the selected course materials.
+                Ask a concept question, explore algorithms, or launch an adaptive quiz
+                grounded in your verified course materials.
               </p>
               <div>
                 {[
@@ -613,7 +750,16 @@ export default function CourseWorkspace({
                   "Compare BFS and DFS",
                   "Quiz me on graph traversal",
                 ].map((prompt) => (
-                  <button key={prompt} onClick={() => setMessage(prompt)}>
+                  <button
+                    key={prompt}
+                    onClick={() => {
+                      if (prompt.startsWith("Quiz me")) {
+                        startAdaptiveQuiz(1)
+                      } else {
+                        handleSendMessage(prompt)
+                      }
+                    }}
+                  >
                     {prompt}
                     <Icon name="arrow" size={13} />
                   </button>
@@ -626,138 +772,68 @@ export default function CourseWorkspace({
                 <span>Today</span>
               </div>
 
-              <div className="user-message">
-                <div className="speaker">You</div>
-                <p>
-                  What’s the difference between breadth-first and depth-first
-                  search? When should I use each?
-                </p>
-              </div>
-
-              <article className="tutor-response">
-                <div className="response-content">
-                  <p className="lead">
-                    Both algorithms explore a graph, but the order in which they
-                    visit nodes gives them different strengths.
-                  </p>
-
-                  <h2>Breadth-first search explores by distance</h2>
-                  <p>
-                    BFS visits every neighbor of the current node before moving
-                    to the next level. It uses a<strong> queue</strong>, so the
-                    earliest discovered node is explored first.
-                  </p>
-                  <div className="algorithm-line">
-                    <code>
-                      enqueue(start) → visit neighbors → enqueue unvisited →
-                      repeat
-                    </code>
-                  </div>
-                  <p>
-                    This makes BFS the right choice when you need the shortest
-                    path in an unweighted graph, or when the answer is likely to
-                    be close to the starting point.
-                    <Citation
-                      active={selectedCitation === "slides"}
-                      onClick={() => setSelectedCitation("slides")}
-                    >
-                      Selected source
-                    </Citation>
-                  </p>
-
-                  <h2>Depth-first search follows one path deeply</h2>
-                  <p>
-                    DFS explores as far as possible along a branch before
-                    backtracking. It uses a<strong> stack</strong>—either
-                    explicitly or through recursion.
-                  </p>
-
-                  <div className="comparison">
-                    <div className="comparison-row comparison-head">
-                      <span>Consideration</span>
-                      <span>BFS</span>
-                      <span>DFS</span>
+              {messages.map((msg) => (
+                <div key={msg.id}>
+                  {msg.role === "user" ? (
+                    <div className="user-message">
+                      <div className="speaker">You</div>
+                      <p>{msg.content}</p>
                     </div>
-                    <div className="comparison-row">
-                      <span>Data structure</span>
-                      <span>Queue</span>
-                      <span>Stack</span>
-                    </div>
-                    <div className="comparison-row">
-                      <span>Shortest path</span>
-                      <span>
-                        <Icon name="check" size={13} /> Guaranteed*
-                      </span>
-                      <span>Not guaranteed</span>
-                    </div>
-                    <div className="comparison-row">
-                      <span>Memory</span>
-                      <span>Higher on wide graphs</span>
-                      <span>Lower in many cases</span>
-                    </div>
-                  </div>
-
-                  <p>
-                    Choose DFS for cycle detection, topological sorting, and
-                    exhaustive path exploration.
-                    <Citation
-                      active={selectedCitation === "book"}
-                      onClick={() => setSelectedCitation("book")}
-                    >
-                      Selected source
-                    </Citation>
-                  </p>
-                  <p className="footnote">
-                    * For unweighted graphs. Both run in O(V + E) with an
-                    adjacency-list representation.
-                  </p>
+                  ) : (
+                    <article className="tutor-response">
+                      <div className="response-content">
+                        {renderFormattedAnswer(msg.content, msg.citations)}
+                        {msg.citations && msg.citations.length > 0 && (
+                          <div className="follow-up">
+                            <span>Grounded Sources</span>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                              {msg.citations.map((c) => (
+                                <button
+                                  className={`citation-pill ${selectedCitationDetail?.id === c.id ? "selected" : ""}`}
+                                  key={c.id}
+                                  onClick={() => setSelectedCitationDetail(c)}
+                                  type="button"
+                                >
+                                  [{c.id}] {c.location}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {!msg.is_grounded && msg.out_of_scope && (
+                          <p className="footnote" style={{ color: "#b45309", marginTop: "8px" }}>
+                            Notice: This query is outside the verified coverage of the course materials.
+                          </p>
+                        )}
+                      </div>
+                    </article>
+                  )}
                 </div>
-              </article>
+              ))}
 
-              {sentMessage && (
+              {responseStatus === "generating" && (
                 <div className="new-message">
-                  <div className="user-message">
-                    <div className="speaker">You</div>
-                    <p>{sentMessage}</p>
+                  <div className="thinking" aria-live="polite">
+                    <span className="thinking-dots">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    Reading across local course materials & synthesizing answer...
                   </div>
-                  {responseStatus === "generating" && (
-                    <div className="thinking" aria-live="polite">
-                      <span className="thinking-dots">
-                        <i />
-                        <i />
-                        <i />
-                      </span>
-                      Reading across your materials
-                    </div>
-                  )}
-                  {responseStatus === "error" && (
-                    <div className="response-error" role="alert">
-                      <Icon name="warning" size={15} />
-                      <span>
-                        <strong>Response interrupted</strong>
-                        Your materials are still available.
-                      </span>
-                      <button onClick={retryResponse}>Retry</button>
-                    </div>
-                  )}
                 </div>
               )}
 
-              <div className="follow-up">
-                <span>Keep exploring</span>
-                <div>
-                  {[
-                    "Show me a visual example",
-                    "Quiz me on this",
-                    "Compare their time complexity",
-                  ].map((prompt) => (
-                    <button key={prompt} onClick={() => setMessage(prompt)}>
-                      {prompt}
-                      <Icon name="arrow" size={13} />
-                    </button>
-                  ))}
+              {responseStatus === "error" && (
+                <div className="response-error" role="alert">
+                  <Icon name="warning" size={15} />
+                  <span>
+                    <strong>Response interrupted</strong>
+                    Failed to generate grounded answer.
+                  </span>
+                  <button onClick={() => handleSendMessage()}>Retry</button>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -773,7 +849,7 @@ export default function CourseWorkspace({
                   event.currentTarget.form?.requestSubmit()
                 }
               }}
-              placeholder="Ask a question about this module…"
+              placeholder="Ask a question about this course or topic…"
               rows={1}
               value={message}
             />
@@ -781,15 +857,17 @@ export default function CourseWorkspace({
               <button
                 aria-label="Attach a material"
                 className="attach-button"
+                onClick={() => startAdaptiveQuiz(1)}
+                title="Launch Adaptive Quiz"
                 type="button"
               >
-                <Icon name="paperclip" />
+                <Icon name="spark" />
               </button>
-              <span>Answers use your selected materials</span>
+              <span>Grounded in local 384-dim embeddings & Gemini</span>
               <button
                 aria-label="Send message"
                 className="send-button"
-                disabled={!message.trim()}
+                disabled={!message.trim() || responseStatus === "generating"}
                 type="submit"
               >
                 <Icon name="arrow" size={16} />
@@ -815,9 +893,9 @@ export default function CourseWorkspace({
               setRightPanelOpen(true)
               setMasteryOpen(true)
             }}
-            title="Topic mastery is not available yet"
+            title="Topic mastery"
           >
-            <span className="rail-metric">68</span>
+            <span className="rail-metric">{averageMastery}</span>
           </button>
         </div>
         <button
@@ -826,6 +904,7 @@ export default function CourseWorkspace({
           onPointerDown={beginResize}
           title="Drag to resize"
         />
+
         <section className="concept-section">
           <div className="panel-title">
             <div>
@@ -833,9 +912,6 @@ export default function CourseWorkspace({
               <h2>Concept map</h2>
             </div>
             <div>
-              <button aria-label="Graph layout" className="icon-button quiet">
-                <Icon name="settings" size={15} />
-              </button>
               <button
                 aria-label="Open graph fullscreen"
                 className="icon-button quiet"
@@ -854,60 +930,76 @@ export default function CourseWorkspace({
           </div>
 
           <div className="graph-wrap">
-            <div className="graph-empty">Concepts will appear here after course materials are processed.</div>
-            <div className="graph-legend">
-              <span>
-                <i className="learned" /> Learned
-              </span>
-              <span>
-                <i className="unexplored" /> Unexplored
-              </span>
-            </div>
-            {selectedConcept && (
-              <div className="concept-tooltip">
-                <span>Selected concept</span>
-                <strong>{selectedConcept}</strong>
-              </div>
-            )}
+            <svg
+              aria-label="Concept dependency map"
+              className="graph"
+              style={{ transform: `scale(${graphZoom})` }}
+              viewBox="0 0 350 200"
+            >
+              {graphNodes.map((node) => {
+                const isSelected = selectedConcept === node.id
+                return (
+                  <g
+                    className={`node ${node.kind} ${isSelected ? "selected" : ""}`}
+                    key={node.id}
+                    onClick={() => setSelectedConcept(node.id)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    {isSelected && (
+                      <circle className="node-ring" cx={node.x} cy={node.y} r={node.r + 7} />
+                    )}
+                    <circle cx={node.x} cy={node.y} r={node.r} />
+                    <text x={node.x + 12} y={node.y + 3}>
+                      {node.id}
+                    </text>
+                  </g>
+                )
+              })}
+            </svg>
             <div className="docked-graph-controls">
               <button
                 aria-label="Zoom out"
-                onClick={() =>
-                  setGraphZoom((zoom) => Math.max(0.75, zoom - 0.1))
-                }
+                onClick={() => setGraphZoom((zoom) => Math.max(0.75, zoom - 0.1))}
               >
                 <Icon name="minus" size={13} />
               </button>
-              <button
-                aria-label="Reset graph view"
-                onClick={() => setGraphZoom(1)}
-              >
+              <button aria-label="Reset graph view" onClick={() => setGraphZoom(1)}>
                 <Icon name="reset" size={12} />
               </button>
               <button
                 aria-label="Zoom in"
-                onClick={() =>
-                  setGraphZoom((zoom) => Math.min(1.4, zoom + 0.1))
-                }
+                onClick={() => setGraphZoom((zoom) => Math.min(1.4, zoom + 0.1))}
               >
                 <Icon name="plus" size={13} />
               </button>
             </div>
           </div>
 
-          <div className="concept-focus">
-            <span className="concept-dot" />
-            <div>
-              <small>SELECTED CONCEPT</small>
-              <strong>{selectedConcept}</strong>
-              <p>
-                Related:{" "}
-                {(relatedConcepts[selectedConcept] || ["Graph traversal"]).join(
-                  " · ",
+          {selectedCitationDetail ? (
+            <div className="concept-focus">
+              <span className="concept-dot" />
+              <div>
+                <small>SOURCE CITATION</small>
+                <strong>{selectedCitationDetail.label}</strong>
+                <p>Location: {selectedCitationDetail.location}</p>
+                {selectedCitationDetail.text_snippet && (
+                  <p style={{ fontStyle: "italic", marginTop: "3px" }}>
+                    “{selectedCitationDetail.text_snippet}…”
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="concept-focus">
+              <span className="concept-dot" />
+              <div>
+                <small>SELECTED CONCEPT</small>
+                <strong>{selectedConcept}</strong>
+                <p>Status: Adaptive learning path active</p>
+              </div>
+            </div>
+          )}
         </section>
 
         <button
@@ -916,9 +1008,8 @@ export default function CourseWorkspace({
           onPointerDown={beginVerticalResize}
           title="Drag to resize"
         />
-        <section
-          className={`progress-section ${masteryOpen ? "" : "minimized"}`}
-        >
+
+        <section className={`progress-section ${masteryOpen ? "" : "minimized"}`}>
           <button
             className="mastery-toggle"
             onClick={() => setMasteryOpen((open) => !open)}
@@ -927,27 +1018,67 @@ export default function CourseWorkspace({
               <span className="eyebrow">THIS COURSE</span>
               <h2>Topic mastery</h2>
             </div>
-            <span className="mastery-live">Unavailable</span>
+            <span className="mastery-live">
+              <i /> Live Tracking
+            </span>
             <Icon name="chevron" size={14} />
           </button>
 
           <div className="mastery-content">
             <div className="mastery-overview">
               <div className="mastery-copy">
-                <strong>—</strong>
-                <span>Progress will appear after studying</span>
+                <strong>{averageMastery}%</strong>
+                <span>Overall Course Mastery</span>
               </div>
               <div className="mastery-bar">
-                <span style={{ width: "0%" }} />
+                <span style={{ width: `${averageMastery}%` }} />
               </div>
-              <span className="mastery-note">No mastery data yet</span>
+              <span className="mastery-note">
+                {studyPath.length} topics tracked in syllabus
+              </span>
             </div>
 
             <div className="progress-list">
-              <div className="empty-search">Mastery will appear after you study this course.</div>
+              {studyPath.map((item) => {
+                const pct = Math.round(item.mastery_score * 100)
+                const isMastered = item.status === "mastered"
+                const isWeak = item.status === "remediation"
+                return (
+                  <button
+                    className={`progress-item ${selectedConcept === item.title ? "selected" : ""}`}
+                    key={item.topic_id}
+                    onClick={() => {
+                      setSelectedConcept(item.title)
+                      startAdaptiveQuiz(item.topic_id)
+                    }}
+                  >
+                    <span className={`status-icon ${isMastered ? "good" : isWeak ? "weak" : "current"}`}>
+                      {isMastered ? <Icon name="check" size={12} /> : isWeak ? <Icon name="warning" size={12} /> : <Icon name="spark" size={12} />}
+                    </span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span>
+                        {item.status.toUpperCase()} · {pct}% Mastery
+                      </span>
+                    </div>
+                    <span className="status-text">{pct}%</span>
+                  </button>
+                )
+              })}
+
+              {weakTopics.length > 0 && (
+                <div style={{ marginTop: "12px", padding: "8px", background: "#fef3c7", borderRadius: "4px" }}>
+                  <small style={{ fontWeight: 600, color: "#92400e" }}>RECOMMENDED REMEDIATION</small>
+                  {weakTopics.map((w) => (
+                    <div key={w.topic_id} style={{ fontSize: "10.5px", marginTop: "4px", color: "#78350f" }}>
+                      • {w.title} (Deficit: {Math.round(w.deficit * 100)}%)
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <button className="continue-link">
+            <button className="continue-link" onClick={() => startAdaptiveQuiz(1)}>
               <span>Test your understanding</span>
               <Icon name="arrow" size={15} />
             </button>
@@ -955,22 +1086,165 @@ export default function CourseWorkspace({
         </section>
       </aside>
 
-      {graphFullscreen && (
+      {quizOpen && (
         <div
-          aria-label="Concept map fullscreen"
+          aria-label="Adaptive Assessment Quiz"
           className="graph-overlay"
           role="dialog"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
         >
+          <div
+            className="fullscreen-graph"
+            style={{ maxWidth: "680px", maxHeight: "88vh", borderRadius: "8px", overflow: "hidden" }}
+          >
+            <header>
+              <div>
+                <span className="eyebrow">ADAPTIVE ASSESSMENT</span>
+                <h2>{quizData?.topic_title || "Topic Quiz"}</h2>
+              </div>
+              <button className="exit-fullscreen" onClick={() => setQuizOpen(false)}>
+                <Icon name="close" size={16} /> Close
+              </button>
+            </header>
+
+            <div style={{ padding: "20px", overflowY: "auto", flex: 1 }}>
+              {quizLoading ? (
+                <div style={{ padding: "40px", textAlign: "center" }}>
+                  <div className="processing-icon" style={{ margin: "0 auto 12px" }}>
+                    <span />
+                  </div>
+                  <strong>Generating adaptive assessment questions...</strong>
+                  <p style={{ color: "var(--muted)", fontSize: "12px", marginTop: "4px" }}>
+                    Synthesizing questions from course chunks and matching your mastery level.
+                  </p>
+                </div>
+              ) : quizData ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                  {quizData.questions.map((q, idx) => {
+                    const result = quizResults[q.id]
+                    const currentAnswer = quizAnswers[q.id] || ""
+                    const isSubmitting = submittingQ[q.id]
+
+                    return (
+                      <div
+                        key={q.id}
+                        style={{
+                          padding: "16px",
+                          border: "1px solid var(--line)",
+                          borderRadius: "6px",
+                          background: "#ffffff",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--sage-dark)" }}>
+                            QUESTION {idx + 1} · {q.question_type.toUpperCase()} ({q.difficulty})
+                          </span>
+                          {result && (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                color: result.is_correct ? "#15803d" : "#b91c1c",
+                              }}
+                            >
+                              {result.is_correct ? "✓ Correct" : "✗ Incorrect"}
+                            </span>
+                          )}
+                        </div>
+
+                        <p style={{ fontSize: "13.5px", fontWeight: 500, marginBottom: "12px" }}>
+                          {q.prompt}
+                        </p>
+
+                        {q.question_type === "MCQ" && q.options && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
+                            {q.options.map((opt) => (
+                              <button
+                                key={opt}
+                                onClick={() => !result && setQuizAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                                style={{
+                                  padding: "9px 12px",
+                                  textAlign: "left",
+                                  borderRadius: "4px",
+                                  border: "1px solid",
+                                  borderColor: currentAnswer === opt ? "var(--teal)" : "#e5e7eb",
+                                  background: currentAnswer === opt ? "var(--sage-faint)" : "#fafafa",
+                                  fontWeight: currentAnswer === opt ? 600 : 400,
+                                  cursor: result ? "default" : "pointer",
+                                }}
+                                type="button"
+                              >
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {q.question_type !== "MCQ" && (
+                          <div style={{ marginBottom: "12px" }}>
+                            <input
+                              disabled={Boolean(result)}
+                              onChange={(e) =>
+                                setQuizAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
+                              }
+                              placeholder="Enter your answer..."
+                              style={{
+                                width: "100%",
+                                padding: "8px 10px",
+                                border: "1px solid #d1d5db",
+                                borderRadius: "4px",
+                              }}
+                              type="text"
+                              value={currentAnswer}
+                            />
+                          </div>
+                        )}
+
+                        {!result ? (
+                          <button
+                            className="button-primary compact"
+                            disabled={!currentAnswer.trim() || isSubmitting}
+                            onClick={() => handleAnswerSubmit(q.id)}
+                            style={{ alignSelf: "flex-start" }}
+                            type="button"
+                          >
+                            {isSubmitting ? "Evaluating..." : "Submit Answer"}
+                          </button>
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: "8px",
+                              padding: "10px",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              background: result.is_correct ? "#f0fdf4" : "#fef2f2",
+                              color: result.is_correct ? "#166534" : "#991b1b",
+                            }}
+                          >
+                            <strong>{result.feedback}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div>No quiz generated.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {graphFullscreen && (
+        <div aria-label="Concept map fullscreen" className="graph-overlay" role="dialog">
           <div className="fullscreen-graph">
             <header>
               <div>
                 <span className="eyebrow">{course?.subject || "Course"}</span>
                 <h2>Concept map</h2>
               </div>
-              <button
-                className="exit-fullscreen"
-                onClick={() => setGraphFullscreen(false)}
-              >
+              <button className="exit-fullscreen" onClick={() => setGraphFullscreen(false)}>
                 <Icon name="close" size={15} />
                 Exit fullscreen <kbd>ESC</kbd>
               </button>
@@ -1000,39 +1274,25 @@ export default function CourseWorkspace({
                   Outline tree
                 </button>
               </div>
-              <button className="export-button" disabled onClick={exportGraph}>
+              <button className="export-button" onClick={() => setGraphFullscreen(false)}>
                 <Icon name="download" size={14} />
-                Export Markdown
+                Close View
               </button>
             </div>
 
             <div className="fullscreen-canvas">
-              <div className="outline-tree graph-empty">
-                <strong>No concepts yet</strong>
-                <small>Process course materials to generate a concept map.</small>
-              </div>
-              <div className="zoom-controls">
-                <button
-                  aria-label="Zoom in"
-                  onClick={() =>
-                    setGraphZoom((zoom) => Math.min(1.8, zoom + 0.1))
-                  }
-                >
-                  <Icon name="plus" size={15} />
-                </button>
-                <button
-                  aria-label="Zoom out"
-                  onClick={() =>
-                    setGraphZoom((zoom) => Math.max(0.6, zoom - 0.1))
-                  }
-                >
-                  <Icon name="minus" size={15} />
-                </button>
-                <span>{Math.round(graphZoom * 100)}%</span>
-                <button onClick={() => setGraphZoom(1)}>
-                  <Icon name="reset" size={14} />
-                  Reset view
-                </button>
+              <div className="outline-tree">
+                <strong>{course?.title || "Course Outline"}</strong>
+                <div>
+                  {studyPath.map((item) => (
+                    <div key={item.topic_id} style={{ marginBottom: "10px" }}>
+                      <span>{item.title}</span>
+                      <small style={{ display: "block" }}>
+                        {item.status.toUpperCase()} · {Math.round(item.mastery_score * 100)}% Mastery
+                      </small>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
