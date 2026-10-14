@@ -30,7 +30,7 @@ class CorruptFileError(IngestionError):
 
 @dataclass
 class ParsedUnit:
-    unit_type: str                      # "page" | "slide" | "segment"
+    unit_type: str
     number: int
     text: str = ""
     tables: list = field(default_factory=list)

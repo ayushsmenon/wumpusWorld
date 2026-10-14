@@ -37,7 +37,6 @@ def format_ts(seconds: float) -> str:
 
 
 def group_segments(raw: list) -> list:
-    """raw = [{'start','end','text'}, ...] -> merged groups of the same shape."""
     groups, cur = [], []
 
     def flush():

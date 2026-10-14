@@ -85,7 +85,7 @@ def save_result(conn, info, status, error, units):
     file_id = info["file_id"]
     with conn:
         conn.execute("DELETE FROM files WHERE file_id = ?",
-                     (file_id,))  # cascades to units
+                     (file_id,))
         conn.execute(
             """INSERT INTO files (file_id, course_id, filename, original_path, source_type,
                                   file_ext, sha256, size_bytes, modified_at, status, error,

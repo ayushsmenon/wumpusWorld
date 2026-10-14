@@ -131,7 +131,7 @@ def render_slides(path: Path, slide_numbers, total_slides, out_dir: Path) -> dic
         except Exception:
             return {}
         try:
-            if doc.page_count != total_slides:   # hidden slides etc. would misalign numbers
+            if doc.page_count != total_slides:
                 return {}
             return {n: render_page(doc[n - 1], n, out_dir, prefix="slide_render")
                     for n in slide_numbers}
