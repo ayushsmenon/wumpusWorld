@@ -9,3 +9,9 @@ psycopg[binary]
 pytest
 sentence-transformers
 python-pptx
+pillow
+faster-whisper
+torch
+transformers
+accelerate
+num2words
