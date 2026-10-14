@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { createCourse } from "../lib/api";
 
 export function CreateCoursePage() {
   const [form, setForm] = useState({ title: "", description: "", subject: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   function updateField(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
@@ -11,7 +15,19 @@ export function CreateCoursePage() {
 
   async function submit(event) {
     event.preventDefault();
-    if (form.title.trim()) setSubmitted(true);
+    if (!form.title.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await createCourse(form.title, form.subject, form.description);
+      setSubmitted(true);
+      const newId = res?.course?.id || "1";
+      navigate(`/courses/${newId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create course");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -35,10 +51,13 @@ export function CreateCoursePage() {
           Short description <span>Optional</span>
           <textarea maxLength={500} name="description" onChange={updateField} placeholder="What will you learn in this course?" rows={4} value={form.description} />
         </label>
-        {submitted && <p className="form-note" role="status">Course creation will be connected in a future step.</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {submitted && <p className="form-note" role="status">Course created successfully!</p>}
         <div className="form-actions">
           <Link className="button-secondary" to="/">Cancel</Link>
-          <button className="button-primary" type="submit">Create course</button>
+          <button className="button-primary" disabled={loading} type="submit">
+            {loading ? "Creating..." : "Create course"}
+          </button>
         </div>
       </form>
     </div>

@@ -7,7 +7,10 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ingestion.models import make_source_id
+try:
+    from backend.ingestion.models import make_source_id
+except ImportError:
+    from ingestion.models import make_source_id
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 DB_PATH = DATA_DIR / "ingestion.db"

@@ -7,7 +7,10 @@ import os
 import sys
 import time
 
-from ingestion import registry
+try:
+    from backend.ingestion import registry
+except ImportError:
+    from ingestion import registry
 
 MODEL_NAME = os.environ.get(
     "VISION_MODEL", "HuggingFaceTB/SmolVLM-500M-Instruct")

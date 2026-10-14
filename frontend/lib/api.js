@@ -2,7 +2,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
+  const headers = options.body instanceof FormData ? (options.headers || {}) : {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
@@ -74,4 +74,34 @@ export function updateTopicMastery(studentId = 1, topicId = 1, isCorrect = true,
       difficulty,
     }),
   });
+}
+
+export function uploadMaterial(courseId = "1", file, topicId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (topicId) {
+    formData.append("topic_id", String(topicId));
+  }
+  return request(`/courses/${courseId}/materials`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function createCourse(title, subject, description) {
+  return request("/courses", {
+    method: "POST",
+    body: JSON.stringify({ title, subject, description }),
+  });
+}
+
+export function runDiagnostic(studentId = 1, courseId = 1) {
+  return request("/learner/diagnostic", {
+    method: "POST",
+    body: JSON.stringify({ student_id: Number(studentId), course_id: Number(courseId) }),
+  });
+}
+
+export function getBenchmark() {
+  return request("/evaluation/benchmark");
 }

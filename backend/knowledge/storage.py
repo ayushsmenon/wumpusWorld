@@ -1,11 +1,10 @@
-"""PostgreSQL/pgvector persistence for indexed knowledge."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 import os
 from collections import defaultdict
+import json
 import math
 from typing import Any, Iterator
 
@@ -13,7 +12,7 @@ from .contracts import KnowledgeChunk, RetrievalResult
 
 
 class StorageError(RuntimeError):
-    """Raised when knowledge cannot be persisted or searched."""
+    pass
 
 
 class PostgresKnowledgeStore:
@@ -28,22 +27,34 @@ class PostgresKnowledgeStore:
         if not database_url:
             raise StorageError("DATABASE_URL is not configured")
         try:
-            import psycopg
-        except ImportError as exc:
-            raise StorageError("The psycopg package is required for PostgreSQL storage") from exc
-        return cls(lambda: psycopg.connect(database_url))
+            from backend.database.connection import get_raw_connection
+            return cls(lambda: get_raw_connection(database_url))
+        except Exception:
+            try:
+                import psycopg
+                return cls(lambda: psycopg.connect(database_url))
+            except ImportError:
+                try:
+                    import psycopg2
+                    from psycopg2.extras import RealDictCursor
+                    return cls(lambda: psycopg2.connect(database_url, cursor_factory=RealDictCursor))
+                except ImportError as exc:
+                    raise StorageError("A PostgreSQL driver (psycopg or psycopg2) is required") from exc
 
     @contextmanager
     def _connection(self) -> Iterator[Any]:
         connection = self._connection_factory()
         try:
             yield connection
-            connection.commit()
+            if hasattr(connection, "commit"):
+                connection.commit()
         except Exception as exc:
-            connection.rollback()
+            if hasattr(connection, "rollback"):
+                connection.rollback()
             raise StorageError("Knowledge storage operation failed") from exc
         finally:
-            connection.close()
+            if hasattr(connection, "close"):
+                connection.close()
 
     def index_document(
         self,
@@ -65,14 +76,14 @@ class PostgresKnowledgeStore:
         ):
             raise ValueError(f"Embeddings must contain finite vectors with {self.dimensions} dimensions")
         first = chunks[0]
-        if any(chunk.file_id != first.file_id or chunk.course_id != first.course_id for chunk in chunks):
+        if any(chunk.file_id != first.file_id or str(chunk.course_id) != str(first.course_id) for chunk in chunks):
             raise ValueError("index_document accepts chunks from one file and course at a time")
 
         with self._connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "DELETE FROM content_units WHERE course_id = %s AND file_id = %s",
-                    (first.course_id, first.file_id),
+                    "DELETE FROM content_units WHERE course_id = %s::text AND file_id = %s",
+                    (str(first.course_id), first.file_id),
                 )
                 chunks_by_source: dict[str, list[KnowledgeChunk]] = defaultdict(list)
                 for chunk in chunks:
@@ -80,36 +91,39 @@ class PostgresKnowledgeStore:
                 for source_chunks in chunks_by_source.values():
                     source = source_chunks[0]
                     cursor.execute(
-                    """
-                    INSERT INTO content_units
-                        (source_id, file_id, course_id, filename, source_type, source_uri,
-                         page_number, slide_number, content_text, content_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        source.source_id,
-                        source.file_id,
-                        source.course_id,
-                        source.filename,
-                        source.source_type,
-                        source.source_uri,
-                        source.page_number,
-                        source.slide_number,
-                        "\n\n".join(chunk.text for chunk in source_chunks),
-                        _document_hash(source_chunks),
-                    ),
+                        """
+                        INSERT INTO content_units
+                            (source_id, file_id, course_id, filename, source_type, source_uri,
+                             page_number, slide_number, video_timestamp, topic_id, content_text, content_hash)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            source.source_id,
+                            source.file_id,
+                            str(source.course_id),
+                            source.filename,
+                            source.source_type,
+                            source.source_uri,
+                            source.page_number,
+                            source.slide_number,
+                            source.video_timestamp,
+                            source.topic_id,
+                            "\n\n".join(chunk.text for chunk in source_chunks),
+                            _document_hash(source_chunks),
+                        ),
                     )
                     content_unit_id = cursor.fetchone()[0]
                     for chunk in source_chunks:
                         metadata = _metadata(chunk)
                         metadata["chunk_id"] = chunk.chunk_id
+                        metadata_json = json.dumps(metadata) if not hasattr(cursor, "cast") else metadata
                         cursor.execute(
                             """
                             INSERT INTO chunks
                                 (content_unit_id, chunk_index, chunk_text, embedding,
                                  content_hash, embedding_model, metadata)
-                            VALUES (%s, %s, %s, %s::vector, %s, %s, %s)
+                            VALUES (%s, %s, %s, %s::vector, %s, %s, %s::jsonb)
                             """,
                             (
                                 content_unit_id,
@@ -118,7 +132,7 @@ class PostgresKnowledgeStore:
                                 _vector_literal(embeddings[chunk.chunk_id]),
                                 chunk.content_hash,
                                 embedding_model,
-                                metadata,
+                                metadata_json,
                             ),
                         )
 
@@ -126,8 +140,8 @@ class PostgresKnowledgeStore:
         with self._connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "DELETE FROM content_units WHERE course_id = %s AND file_id = %s",
-                    (course_id, file_id),
+                    "DELETE FROM content_units WHERE course_id = %s::text AND file_id = %s",
+                    (str(course_id), file_id),
                 )
 
     def search(
@@ -149,19 +163,19 @@ class PostgresKnowledgeStore:
                     SELECT COALESCE(c.metadata->>'chunk_id', c.id::text), c.chunk_text,
                            1 - (c.embedding <=> %s::vector) AS score,
                            u.source_id, u.file_id, u.course_id, u.filename, u.source_uri,
-                           u.page_number, u.slide_number,
+                           u.page_number, u.slide_number, u.video_timestamp, u.topic_id,
                            COALESCE(c.metadata->>'section_title', '') AS section_title,
                            c.metadata
                     FROM chunks c
                     JOIN content_units u ON u.id = c.content_unit_id
-                    WHERE u.course_id = %s
+                    WHERE u.course_id = %s::text
                       AND 1 - (c.embedding <=> %s::vector) >= %s
                     ORDER BY c.embedding <=> %s::vector
                     LIMIT %s
                     """,
                     (
                         _vector_literal(query_embedding),
-                        course_id,
+                        str(course_id),
                         _vector_literal(query_embedding),
                         min_score,
                         _vector_literal(query_embedding),
@@ -189,10 +203,29 @@ def _metadata(chunk: KnowledgeChunk) -> dict[str, Any]:
         "chunk_id": chunk.chunk_id,
         "section_title": chunk.section_title,
         "source_type": chunk.source_type,
+        "video_timestamp": chunk.video_timestamp,
+        "topic_id": chunk.topic_id,
     }
 
 
-def _result_from_row(row: Sequence[Any]) -> RetrievalResult:
+def _result_from_row(row: Sequence[Any] | dict[str, Any]) -> RetrievalResult:
+    if isinstance(row, dict):
+        return RetrievalResult(
+            chunk_id=str(row.get("chunk_id") or row.get("id")),
+            text=str(row["chunk_text"]),
+            score=float(row.get("score", 0.0)),
+            source_id=str(row["source_id"]),
+            file_id=str(row["file_id"]),
+            course_id=str(row["course_id"]),
+            filename=str(row["filename"]),
+            source_uri=row.get("source_uri"),
+            page_number=row.get("page_number"),
+            slide_number=row.get("slide_number"),
+            video_timestamp=float(row["video_timestamp"]) if row.get("video_timestamp") is not None else None,
+            topic_id=int(row["topic_id"]) if row.get("topic_id") is not None else None,
+            section_title=row.get("section_title") or None,
+            metadata=row.get("metadata") or {},
+        )
     return RetrievalResult(
         chunk_id=str(row[0]),
         text=row[1],
@@ -204,6 +237,8 @@ def _result_from_row(row: Sequence[Any]) -> RetrievalResult:
         source_uri=row[7],
         page_number=row[8],
         slide_number=row[9],
-        section_title=row[10] or None,
-        metadata=row[11] or {},
+        video_timestamp=float(row[10]) if row[10] is not None else None,
+        topic_id=int(row[11]) if row[11] is not None else None,
+        section_title=row[12] or None,
+        metadata=row[13] if len(row) > 13 else {},
     )

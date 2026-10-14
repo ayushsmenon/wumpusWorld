@@ -1,5 +1,7 @@
 from contextlib import contextmanager
 import os
+
+os.environ["HF_HOME"] = os.getenv("HF_HOME", "D:/wumpus_cache")
 import re
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any

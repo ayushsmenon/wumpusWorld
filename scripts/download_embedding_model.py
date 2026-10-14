@@ -1,9 +1,8 @@
-"""Explicitly download the local embedding model during setup."""
-
 import os
 
-from sentence_transformers import SentenceTransformer
+os.environ["HF_HOME"] = os.getenv("HF_HOME", "D:/wumpus_cache")
 
+from sentence_transformers import SentenceTransformer
 
 model_name = os.getenv(
     "EMBEDDING_MODEL",

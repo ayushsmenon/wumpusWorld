@@ -1,13 +1,9 @@
-"""Typed contracts shared by ingestion, indexing, and retrieval."""
-
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
 class ContentRecord:
-    """A normalized page, slide, or other source unit from ingestion."""
-
     source_id: str
     file_id: str
     course_id: str
@@ -17,6 +13,8 @@ class ContentRecord:
     source_uri: str | None = None
     page_number: int | None = None
     slide_number: int | None = None
+    video_timestamp: float | None = None
+    topic_id: int | None = None
     section_title: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -36,12 +34,12 @@ class ContentRecord:
         for name, value in (("page_number", self.page_number), ("slide_number", self.slide_number)):
             if value is not None and (not isinstance(value, int) or value < 1):
                 raise ValueError(f"{name} must be a positive integer")
+        if self.video_timestamp is not None and (not isinstance(self.video_timestamp, (int, float)) or self.video_timestamp < 0):
+            raise ValueError("video_timestamp must be a non-negative number")
 
 
 @dataclass(frozen=True)
 class KnowledgeChunk:
-    """A searchable chunk retaining its exact source location."""
-
     chunk_id: str
     source_id: str
     file_id: str
@@ -53,6 +51,8 @@ class KnowledgeChunk:
     source_uri: str | None = None
     page_number: int | None = None
     slide_number: int | None = None
+    video_timestamp: float | None = None
+    topic_id: int | None = None
     section_title: str | None = None
     content_hash: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -60,8 +60,6 @@ class KnowledgeChunk:
 
 @dataclass(frozen=True)
 class RetrievalResult:
-    """Evidence returned to the tutor, including citation metadata."""
-
     chunk_id: str
     text: str
     score: float
@@ -72,5 +70,7 @@ class RetrievalResult:
     source_uri: str | None = None
     page_number: int | None = None
     slide_number: int | None = None
+    video_timestamp: float | None = None
+    topic_id: int | None = None
     section_title: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)

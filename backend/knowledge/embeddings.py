@@ -52,15 +52,18 @@ class LocalSentenceTransformerProvider:
             self._model = model
             return
         try:
+            import os
+            os.environ["HF_HOME"] = os.getenv("HF_HOME", "D:/wumpus_cache")
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise LocalModelError(
                 "The sentence-transformers package is required for local embeddings"
             ) from exc
         try:
+            effective_cache = cache_folder or os.getenv("EMBEDDING_CACHE_DIR") or None
             self._model = SentenceTransformer(
                 model_name,
-                cache_folder=cache_folder,
+                cache_folder=effective_cache,
                 local_files_only=local_files_only,
                 device=device,
             )

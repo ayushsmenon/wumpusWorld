@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from ingestion.models import CorruptFileError, ParsedUnit
+try:
+    from backend.ingestion.models import CorruptFileError, ParsedUnit
+except ImportError:
+    from ingestion.models import CorruptFileError, ParsedUnit
 
 
 def parse_image(path: Path, out_dir: Path) -> list:

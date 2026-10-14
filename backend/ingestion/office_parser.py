@@ -2,9 +2,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ingestion.models import CorruptFileError, UnsupportedFormatError
-from ingestion.pdf_parser import parse_pdf
-from ingestion.slide_parser import LIBREOFFICE_TIMEOUT, find_soffice
+try:
+    from backend.ingestion.models import CorruptFileError, UnsupportedFormatError
+    from backend.ingestion.pdf_parser import parse_pdf
+    from backend.ingestion.slide_parser import LIBREOFFICE_TIMEOUT, find_soffice
+except ImportError:
+    from ingestion.models import CorruptFileError, UnsupportedFormatError
+    from ingestion.pdf_parser import parse_pdf
+    from ingestion.slide_parser import LIBREOFFICE_TIMEOUT, find_soffice
 
 
 def parse_office(path: Path, out_dir: Path) -> list:

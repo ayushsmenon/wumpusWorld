@@ -1,11 +1,17 @@
+import os
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Any, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.assessment.generator import AssessmentGenerator
 from backend.assessment.validator import AssessmentValidator
 from backend.database.connection import get_db_pool
+from backend.evaluation.benchmark import SystemEvaluator
+from backend.knowledge.pipeline import KnowledgePipeline
 from backend.learner.mastery import LearnerMasteryTracker
 from backend.learner.recommendations import AdaptiveRecommendationEngine
 from backend.tutor.answer import SourceGroundedTutor
@@ -19,6 +25,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def ensure_student_exists(student_id: int) -> None:
+    try:
+        pool = get_db_pool()
+        with pool.get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO students (id, username, email)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (id) DO NOTHING;
+                """,
+                (student_id, f"learner_{student_id}", f"student_{student_id}@wumpus.ai"),
+            )
+    except Exception:
+        pass
 
 
 class AskRequest(BaseModel):
@@ -59,6 +81,17 @@ class SubmitAssessmentAnswerRequest(BaseModel):
     submitted_answer: str
 
 
+class CreateCourseRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    subject: Optional[str] = None
+
+
+class DiagnosticRequest(BaseModel):
+    student_id: int = 1
+    course_id: int = 1
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -71,20 +104,58 @@ def list_courses():
         with pool.get_cursor() as cur:
             cur.execute("SELECT id, title, description, created_at FROM courses ORDER BY id ASC;")
             rows = cur.fetchall()
-            return [dict(r) for r in rows]
+            if rows:
+                return [dict(r) for r in rows]
     except Exception:
-        return [
-            {
-                "id": 1,
-                "title": "Data Structures & Algorithms",
-                "description": "Master foundational and advanced data structures, graph traversals, and shortest path algorithms.",
-            },
-            {
-                "id": 2,
-                "title": "Artificial Intelligence & Search",
-                "description": "Explore heuristic search, state-space exploration, and adaptive agent reasoning.",
-            },
-        ]
+        pass
+    return [
+        {
+            "id": 1,
+            "title": "Data Structures & Algorithms",
+            "description": "Master foundational and advanced data structures, graph traversals, and shortest path algorithms.",
+        },
+        {
+            "id": 2,
+            "title": "Artificial Intelligence & Search",
+            "description": "Explore heuristic search, state-space exploration, and adaptive agent reasoning.",
+        },
+    ]
+
+
+@app.post("/courses")
+def create_course(payload: CreateCourseRequest):
+    try:
+        pool = get_db_pool()
+        with pool.get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO courses (title, description)
+                VALUES (%s, %s)
+                RETURNING id, title, description, created_at;
+                """,
+                (payload.title, payload.description or payload.subject),
+            )
+            course_row = cur.fetchone()
+            cid = course_row["id"] if isinstance(course_row, dict) else course_row[0]
+
+            cur.execute(
+                """
+                INSERT INTO topics (course_id, title, description, order_index)
+                VALUES
+                    (%s, 'Foundations & Concepts', 'Core definitions and introductory principles', 1),
+                    (%s, 'Core Principles & Analysis', 'Detailed analysis and structural mechanics', 2),
+                    (%s, 'Advanced Applications', 'Complex problem solving and synthesis', 3)
+                RETURNING id, title;
+                """,
+                (cid, cid, cid),
+            )
+            topics_rows = cur.fetchall()
+            return {
+                "course": dict(course_row) if isinstance(course_row, dict) else {"id": cid, "title": payload.title},
+                "topics": [dict(r) for r in topics_rows],
+            }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/courses/{course_id}/topics")
@@ -97,13 +168,40 @@ def list_topics(course_id: int):
                 (course_id,),
             )
             rows = cur.fetchall()
-            return [dict(r) for r in rows]
+            if rows:
+                return [dict(r) for r in rows]
     except Exception:
-        return [
-            {"id": 1, "course_id": course_id, "title": "Graph Traversal", "order_index": 1},
-            {"id": 2, "course_id": course_id, "title": "Shortest Paths", "order_index": 2},
-            {"id": 3, "course_id": course_id, "title": "Spanning Trees", "order_index": 3},
-        ]
+        pass
+    return [
+        {"id": 1, "course_id": course_id, "title": "Graph Traversal", "order_index": 1},
+        {"id": 2, "course_id": course_id, "title": "Shortest Paths", "order_index": 2},
+        {"id": 3, "course_id": course_id, "title": "Spanning Trees", "order_index": 3},
+    ]
+
+
+@app.post("/courses/{course_id}/materials")
+async def upload_course_material(
+    course_id: str,
+    file: UploadFile = File(...),
+    topic_id: Optional[int] = Form(None),
+):
+    try:
+        suffix = Path(file.filename or "file").suffix
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+
+        pipeline = KnowledgePipeline()
+        result = pipeline.ingest_and_index(
+            file_path=tmp_path,
+            course_id=str(course_id),
+            topic_id=topic_id,
+            source_uri=file.filename,
+        )
+        Path(tmp_path).unlink(missing_ok=True)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/tutor/ask")
@@ -122,6 +220,7 @@ def tutor_ask(payload: AskRequest):
 @app.get("/learner/mastery/{student_id}")
 def get_masteries(student_id: int, course_id: Optional[int] = None):
     try:
+        ensure_student_exists(student_id)
         tracker = LearnerMasteryTracker()
         masteries = tracker.get_student_masteries(student_id=student_id, course_id=course_id)
         return [m.to_dict() for m in masteries]
@@ -132,6 +231,7 @@ def get_masteries(student_id: int, course_id: Optional[int] = None):
 @app.post("/learner/mastery/answer")
 def record_quiz_answer(payload: RecordAnswerRequest):
     try:
+        ensure_student_exists(payload.student_id)
         tracker = LearnerMasteryTracker()
         updated = tracker.record_answer_and_update(
             student_id=payload.student_id,
@@ -150,6 +250,7 @@ def record_quiz_answer(payload: RecordAnswerRequest):
 @app.post("/learner/mastery/update")
 def update_topic_mastery(payload: TopicMasteryUpdateRequest):
     try:
+        ensure_student_exists(payload.student_id)
         tracker = LearnerMasteryTracker()
         updated = tracker.update_topic_mastery(
             student_id=payload.student_id,
@@ -165,6 +266,7 @@ def update_topic_mastery(payload: TopicMasteryUpdateRequest):
 @app.get("/learner/recommendations/{student_id}/{course_id}")
 def get_recommendations(student_id: int, course_id: int, target_topic_id: Optional[int] = None):
     try:
+        ensure_student_exists(student_id)
         engine = AdaptiveRecommendationEngine()
         study_path = engine.suggest_study_path(
             student_id=student_id,
@@ -188,9 +290,28 @@ def get_recommendations(student_id: int, course_id: int, target_topic_id: Option
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.post("/learner/diagnostic")
+def run_intake_diagnostic(payload: DiagnosticRequest):
+    try:
+        ensure_student_exists(payload.student_id)
+        generator = AssessmentGenerator()
+        topics = list_topics(payload.course_id)
+        first_topic = topics[0]["id"] if topics else 1
+        return generator.create_adaptive_assessment(
+            student_id=payload.student_id,
+            topic_id=first_topic,
+            assessment_type="diagnostic_exam",
+            count=3,
+            target_difficulty="easy",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/assessment/generate")
 def generate_assessment(payload: GenerateAssessmentRequest):
     try:
+        ensure_student_exists(payload.student_id)
         generator = AssessmentGenerator()
         return generator.create_adaptive_assessment(
             student_id=payload.student_id,
@@ -240,6 +361,7 @@ def get_assessment(assessment_id: int):
 @app.post("/assessment/submit")
 def submit_assessment_answer(payload: SubmitAssessmentAnswerRequest):
     try:
+        ensure_student_exists(payload.student_id)
         tracker = LearnerMasteryTracker()
         validator = AssessmentValidator()
 
@@ -273,5 +395,19 @@ def submit_assessment_answer(payload: SubmitAssessmentAnswerRequest):
         }
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/evaluation/benchmark")
+def run_evaluation_benchmark():
+    try:
+        evaluator = SystemEvaluator()
+        rag_metrics = evaluator.run_rag_evaluation()
+        personalization = evaluator.run_personalization_simulation()
+        return {
+            "rag_evaluation": rag_metrics,
+            "personalization_simulation": personalization,
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

@@ -6,14 +6,24 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ingestion import registry, video_parser
-from ingestion.image_parser import parse_image
-from ingestion.models import (CORRUPT, PARSED, EmptyFileError, IngestionError,
-                              UnsupportedFormatError)
-from ingestion.office_parser import parse_office
-from ingestion.pdf_parser import parse_pdf
-from ingestion.slide_parser import parse_slides
-from ingestion.video_parser import parse_video
+try:
+    from backend.ingestion import registry, video_parser
+    from backend.ingestion.image_parser import parse_image
+    from backend.ingestion.models import (CORRUPT, PARSED, EmptyFileError, IngestionError,
+                                          UnsupportedFormatError)
+    from backend.ingestion.office_parser import parse_office
+    from backend.ingestion.pdf_parser import parse_pdf
+    from backend.ingestion.slide_parser import parse_slides
+    from backend.ingestion.video_parser import parse_video
+except ImportError:
+    from ingestion import registry, video_parser
+    from ingestion.image_parser import parse_image
+    from ingestion.models import (CORRUPT, PARSED, EmptyFileError, IngestionError,
+                                  UnsupportedFormatError)
+    from ingestion.office_parser import parse_office
+    from ingestion.pdf_parser import parse_pdf
+    from ingestion.slide_parser import parse_slides
+    from ingestion.video_parser import parse_video
 
 PARSERS = {
     ".pdf": ("pdf", parse_pdf),

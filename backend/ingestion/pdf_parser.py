@@ -4,8 +4,12 @@ from pathlib import Path
 
 import pymupdf
 
-from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
-                              PasswordProtectedError)
+try:
+    from backend.ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                          PasswordProtectedError)
+except ImportError:
+    from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                  PasswordProtectedError)
 
 MIN_TEXT_CHARS = 25
 BIG_IMAGE_FRACTION = 0.05

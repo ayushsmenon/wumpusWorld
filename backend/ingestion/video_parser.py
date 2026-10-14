@@ -3,8 +3,12 @@ import os
 from bisect import bisect_right
 from pathlib import Path
 
-from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
-                              UnsupportedFormatError)
+try:
+    from backend.ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                          UnsupportedFormatError)
+except ImportError:
+    from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                  UnsupportedFormatError)
 
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
 TARGET_SECONDS = 45

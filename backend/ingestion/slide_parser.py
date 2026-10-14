@@ -7,9 +7,14 @@ import pymupdf
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
-from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
-                              PasswordProtectedError)
-from ingestion.pdf_parser import render_page
+try:
+    from backend.ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                          PasswordProtectedError)
+    from backend.ingestion.pdf_parser import render_page
+except ImportError:
+    from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
+                                  PasswordProtectedError)
+    from ingestion.pdf_parser import render_page
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 MIN_TEXT_CHARS = 25

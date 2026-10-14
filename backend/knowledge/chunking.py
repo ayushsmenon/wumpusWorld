@@ -55,6 +55,8 @@ class TextChunker:
                     source_uri=record.source_uri,
                     page_number=record.page_number,
                     slide_number=record.slide_number,
+                    video_timestamp=record.video_timestamp,
+                    topic_id=record.topic_id,
                     section_title=record.section_title,
                     content_hash=_hash_text(piece),
                     metadata=dict(record.metadata),
