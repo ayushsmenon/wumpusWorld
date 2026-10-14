@@ -1,5 +1,3 @@
-# for old ppts nd docs tht need to be converted first
-
 import subprocess
 import tempfile
 from pathlib import Path

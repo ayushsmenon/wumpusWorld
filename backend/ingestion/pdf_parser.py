@@ -11,13 +11,11 @@ MIN_TEXT_CHARS = 25
 BIG_IMAGE_FRACTION = 0.05
 DIAGRAM_EXTRA_DRAWINGS = 10
 SCAN_IMAGE_FRACTION = 0.5
-# a real table has most cells filled; a mostly-empty grid is a diagram
 MIN_FILLED_FRACTION = 0.5
 RENDER_DPI = 150
 
 
 def find_repeated_images(doc) -> set:
-    # remove logos and repettive imgs as part of the content
     counts = Counter()
     for page in doc:
         for xref in {img[0] for img in page.get_images(full=True)}:
@@ -61,8 +59,6 @@ def find_images(page, repeated) -> list:
                     "height": round(rect.height),
                 })
     return found
-
-# input for vision
 
 
 def render_page(page, number, out_dir: Path, prefix: str = "page") -> dict:

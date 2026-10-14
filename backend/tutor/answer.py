@@ -1,6 +1,7 @@
+from contextlib import contextmanager
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 from backend.tutor.citations import build_context_and_citations, extract_cited_ids
@@ -45,21 +46,45 @@ class SourceGroundedTutor:
             except Exception:
                 self._model = None
 
-    def _get_connection(self) -> Any:
+    @contextmanager
+    def _connection(self) -> Iterator[Any]:
         if self._connection_factory is not None:
-            return self._connection_factory()
+            conn = self._connection_factory()
+            try:
+                yield conn
+                if hasattr(conn, "commit"):
+                    conn.commit()
+            except Exception:
+                if hasattr(conn, "rollback"):
+                    conn.rollback()
+                raise
+            finally:
+                if hasattr(conn, "close"):
+                    conn.close()
+            return
+
         if not self.db_url:
             raise RuntimeError("DATABASE_URL is not configured")
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
 
-            return psycopg.connect(self.db_url, row_factory=dict_row)
-        except ImportError:
+        try:
+            from backend.database.connection import get_db_pool
+
+            pool = get_db_pool(self.db_url)
+            with pool.get_connection() as conn:
+                yield conn
+        except Exception:
             import psycopg2
             from psycopg2.extras import RealDictCursor
 
-            return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def _get_embedding_provider(self) -> Any:
         if self._embedding_provider is not None:
@@ -134,8 +159,7 @@ class SourceGroundedTutor:
             LIMIT %s;
         """
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     sql,
@@ -158,8 +182,6 @@ class SourceGroundedTutor:
                     else:
                         results.append(dict(row))
                 return results
-        finally:
-            conn.close()
 
     def generate_grounded_answer(
         self,

@@ -1,4 +1,3 @@
-# for pics nd diagrams
 from pathlib import Path
 
 from ingestion.models import CorruptFileError, ParsedUnit

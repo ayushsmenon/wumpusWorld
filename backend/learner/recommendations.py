@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 import os
 from typing import Any
@@ -49,25 +50,48 @@ class AdaptiveRecommendationEngine:
         self._connection_factory = connection_factory
         self.default_mastery_threshold = default_mastery_threshold
 
-    def _get_connection(self) -> Any:
+    @contextmanager
+    def _connection(self) -> Iterator[Any]:
         if self._connection_factory is not None:
-            return self._connection_factory()
+            conn = self._connection_factory()
+            try:
+                yield conn
+                if hasattr(conn, "commit"):
+                    conn.commit()
+            except Exception:
+                if hasattr(conn, "rollback"):
+                    conn.rollback()
+                raise
+            finally:
+                if hasattr(conn, "close"):
+                    conn.close()
+            return
+
         if not self.db_url:
             raise RuntimeError("DATABASE_URL is not configured")
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
 
-            return psycopg.connect(self.db_url, row_factory=dict_row)
-        except ImportError:
+        try:
+            from backend.database.connection import get_db_pool
+
+            pool = get_db_pool(self.db_url)
+            with pool.get_connection() as conn:
+                yield conn
+        except Exception:
             import psycopg2
             from psycopg2.extras import RealDictCursor
 
-            return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def load_course_topics(self, course_id: int) -> dict[int, TopicNode]:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -90,8 +114,6 @@ class AdaptiveRecommendationEngine:
                     (course_id,),
                 )
                 prereq_rows = cur.fetchall()
-        finally:
-            conn.close()
 
         prereqs_map: dict[int, list[int]] = defaultdict(list)
         for row in prereq_rows:
@@ -118,8 +140,7 @@ class AdaptiveRecommendationEngine:
         student_id: int,
         course_id: int,
     ) -> dict[int, TopicMasteryInfo]:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -131,8 +152,6 @@ class AdaptiveRecommendationEngine:
                     (student_id, course_id),
                 )
                 rows = cur.fetchall()
-        finally:
-            conn.close()
 
         masteries: dict[int, TopicMasteryInfo] = {}
         for row in rows:

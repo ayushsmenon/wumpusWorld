@@ -1,6 +1,7 @@
-import os
-from collections.abc import Callable
+from contextlib import contextmanager
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
+import os
 from typing import Any
 
 
@@ -57,21 +58,45 @@ class LearnerMasteryTracker:
         self.db_url = db_url or os.getenv("DATABASE_URL")
         self._connection_factory = connection_factory
 
-    def _get_connection(self) -> Any:
+    @contextmanager
+    def _connection(self) -> Iterator[Any]:
         if self._connection_factory is not None:
-            return self._connection_factory()
+            conn = self._connection_factory()
+            try:
+                yield conn
+                if hasattr(conn, "commit"):
+                    conn.commit()
+            except Exception:
+                if hasattr(conn, "rollback"):
+                    conn.rollback()
+                raise
+            finally:
+                if hasattr(conn, "close"):
+                    conn.close()
+            return
+
         if not self.db_url:
             raise RuntimeError("DATABASE_URL is not configured")
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
 
-            return psycopg.connect(self.db_url, row_factory=dict_row)
-        except ImportError:
+        try:
+            from backend.database.connection import get_db_pool
+
+            pool = get_db_pool(self.db_url)
+            with pool.get_connection() as conn:
+                yield conn
+        except Exception:
             import psycopg2
             from psycopg2.extras import RealDictCursor
 
-            return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def get_topic_mastery(self, student_id: int, topic_id: int) -> TopicMastery:
         sql = """
@@ -79,8 +104,7 @@ class LearnerMasteryTracker:
             FROM learner_mastery
             WHERE student_id = %s AND topic_id = %s;
         """
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (student_id, topic_id))
                 row = cur.fetchone()
@@ -99,8 +123,6 @@ class LearnerMasteryTracker:
                     confidence=float(data["confidence"]),
                     updated_at=str(data.get("updated_at")),
                 )
-        finally:
-            conn.close()
 
     def get_student_masteries(
         self,
@@ -125,8 +147,7 @@ class LearnerMasteryTracker:
             """
             params = (student_id,)
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 rows = cur.fetchall()
@@ -143,8 +164,6 @@ class LearnerMasteryTracker:
                         )
                     )
                 return results
-        finally:
-            conn.close()
 
     def update_topic_mastery(
         self,
@@ -172,16 +191,13 @@ class LearnerMasteryTracker:
             RETURNING student_id, topic_id, mastery_score, confidence, updated_at;
         """
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     upsert_sql,
                     (student_id, topic_id, new_mastery, new_confidence),
                 )
                 row = cur.fetchone()
-                if hasattr(conn, "commit"):
-                    conn.commit()
                 data = row if isinstance(row, dict) else dict(row)
                 return TopicMastery(
                     student_id=data["student_id"],
@@ -190,8 +206,6 @@ class LearnerMasteryTracker:
                     confidence=float(data["confidence"]),
                     updated_at=str(data.get("updated_at")),
                 )
-        finally:
-            conn.close()
 
     def record_answer_and_update(
         self,
@@ -203,8 +217,7 @@ class LearnerMasteryTracker:
         feedback: str | None = None,
         misconception_detected: str | None = None,
     ) -> TopicMastery:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 answer_sql = """
                     INSERT INTO student_answers
@@ -273,8 +286,6 @@ class LearnerMasteryTracker:
                 """
                 cur.execute(upsert_sql, (student_id, topic_id, new_m, new_c))
                 res_row = cur.fetchone()
-                if hasattr(conn, "commit"):
-                    conn.commit()
                 res_data = res_row if isinstance(res_row, dict) else dict(res_row)
                 return TopicMastery(
                     student_id=res_data["student_id"],
@@ -283,16 +294,13 @@ class LearnerMasteryTracker:
                     confidence=float(res_data["confidence"]),
                     updated_at=str(res_data.get("updated_at")),
                 )
-        finally:
-            conn.close()
 
     def batch_update_from_assessment(
         self,
         student_id: int,
         assessment_id: int,
     ) -> dict[int, TopicMastery]:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 sql = """
                     SELECT sa.question_id, sa.is_correct, q.topic_id, q.difficulty
@@ -303,8 +311,6 @@ class LearnerMasteryTracker:
                 """
                 cur.execute(sql, (student_id, assessment_id))
                 rows = cur.fetchall()
-        finally:
-            conn.close()
 
         updated_masteries: dict[int, TopicMastery] = {}
         for row in rows:

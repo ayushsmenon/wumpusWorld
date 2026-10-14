@@ -102,7 +102,6 @@ def caption_file(conn, file_id: str, force: bool = False, log=print) -> dict:
             continue
         targets = pick_targets(u)
         if not targets:
-            # flagged, but nothing on disk to look at
             stats["no_image"] += 1
             continue
         pending = [t for t in targets if force or "caption" not in t]

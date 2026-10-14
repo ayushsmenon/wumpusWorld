@@ -18,7 +18,6 @@ from ingestion.video_parser import parse_video
 PARSERS = {
     ".pdf": ("pdf", parse_pdf),
     ".pptx": ("pptx", parse_slides),
-    # Word / OpenDocument / old PowerPoint: converted to PDF by LibreOffice first
     ".docx": ("docx", parse_office), ".doc": ("doc", parse_office),
     ".odt": ("odt", parse_office), ".odp": ("odp", parse_office),
     ".ppt": ("ppt", parse_office),
@@ -85,7 +84,6 @@ def ingest_file(path, course_id: str, force: bool = False, vision: bool = True) 
                   "source_type": source_type, "unit_count": existing["unit_count"],
                   "message": existing["error"] or "", "from_cache": True}
         if vision and existing["status"] == PARSED:
-            # resumes anything left undone
             result["vision"] = run_vision(conn, file_id)
         return result
 

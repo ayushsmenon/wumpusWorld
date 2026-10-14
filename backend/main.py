@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from backend.assessment.generator import AssessmentGenerator
 from backend.assessment.validator import AssessmentValidator
+from backend.database.connection import get_db_pool
 from backend.learner.mastery import LearnerMasteryTracker
 from backend.learner.recommendations import AdaptiveRecommendationEngine
 from backend.tutor.answer import SourceGroundedTutor
@@ -61,6 +62,48 @@ class SubmitAssessmentAnswerRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/courses")
+def list_courses():
+    try:
+        pool = get_db_pool()
+        with pool.get_cursor() as cur:
+            cur.execute("SELECT id, title, description, created_at FROM courses ORDER BY id ASC;")
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return [
+            {
+                "id": 1,
+                "title": "Data Structures & Algorithms",
+                "description": "Master foundational and advanced data structures, graph traversals, and shortest path algorithms.",
+            },
+            {
+                "id": 2,
+                "title": "Artificial Intelligence & Search",
+                "description": "Explore heuristic search, state-space exploration, and adaptive agent reasoning.",
+            },
+        ]
+
+
+@app.get("/courses/{course_id}/topics")
+def list_topics(course_id: int):
+    try:
+        pool = get_db_pool()
+        with pool.get_cursor() as cur:
+            cur.execute(
+                "SELECT id, course_id, parent_id, title, description, order_index FROM topics WHERE course_id = %s ORDER BY order_index ASC, id ASC;",
+                (course_id,),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return [
+            {"id": 1, "course_id": course_id, "title": "Graph Traversal", "order_index": 1},
+            {"id": 2, "course_id": course_id, "title": "Shortest Paths", "order_index": 2},
+            {"id": 3, "course_id": course_id, "title": "Spanning Trees", "order_index": 3},
+        ]
 
 
 @app.post("/tutor/ask")
@@ -160,14 +203,47 @@ def generate_assessment(payload: GenerateAssessmentRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get("/assessment/{assessment_id}")
+def get_assessment(assessment_id: int):
+    try:
+        tracker = LearnerMasteryTracker()
+        with tracker._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, student_id, assessment_type, score, completed, created_at FROM assessments WHERE id = %s;",
+                    (assessment_id,),
+                )
+                a_row = cur.fetchone()
+                if not a_row:
+                    raise HTTPException(status_code=404, detail="Assessment not found")
+                a_data = a_row if isinstance(a_row, dict) else dict(a_row)
+
+                cur.execute(
+                    """
+                    SELECT q.id, q.topic_id, q.question_type, q.difficulty, q.prompt, q.options, q.correct_answer, q.explanation
+                    FROM questions q
+                    JOIN assessment_questions aq ON q.id = aq.question_id
+                    WHERE aq.assessment_id = %s
+                    ORDER BY q.id ASC;
+                    """,
+                    (assessment_id,),
+                )
+                q_rows = cur.fetchall()
+                a_data["questions"] = [dict(r) if not isinstance(r, dict) else r for r in q_rows]
+                return a_data
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/assessment/submit")
 def submit_assessment_answer(payload: SubmitAssessmentAnswerRequest):
     try:
         tracker = LearnerMasteryTracker()
         validator = AssessmentValidator()
 
-        conn = tracker._get_connection()
-        try:
+        with tracker._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, topic_id, question_type, difficulty, prompt, options, correct_answer, explanation FROM questions WHERE id = %s;",
@@ -177,8 +253,6 @@ def submit_assessment_answer(payload: SubmitAssessmentAnswerRequest):
                 if not row:
                     raise HTTPException(status_code=404, detail="Question not found")
                 q_data = row if isinstance(row, dict) else dict(row)
-        finally:
-            conn.close()
 
         is_correct, feedback = validator.verify_student_answer(q_data, payload.submitted_answer)
         updated_mastery = tracker.record_answer_and_update(

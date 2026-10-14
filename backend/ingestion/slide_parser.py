@@ -11,7 +11,6 @@ from ingestion.models import (CorruptFileError, EmptyFileError, ParsedUnit,
                               PasswordProtectedError)
 from ingestion.pdf_parser import render_page
 
-# encrypted .pptx files start like this
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 MIN_TEXT_CHARS = 25
 BIG_PICTURE_FRACTION = 0.05

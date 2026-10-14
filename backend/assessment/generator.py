@@ -1,8 +1,9 @@
+from contextlib import contextmanager
 import json
 import os
 import re
-from collections.abc import Callable
-from typing import Any, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any
 
 from backend.assessment.validator import AssessmentValidator
 
@@ -31,25 +32,48 @@ class AssessmentGenerator:
             except Exception:
                 self._model = None
 
-    def _get_connection(self) -> Any:
+    @contextmanager
+    def _connection(self) -> Iterator[Any]:
         if self._connection_factory is not None:
-            return self._connection_factory()
+            conn = self._connection_factory()
+            try:
+                yield conn
+                if hasattr(conn, "commit"):
+                    conn.commit()
+            except Exception:
+                if hasattr(conn, "rollback"):
+                    conn.rollback()
+                raise
+            finally:
+                if hasattr(conn, "close"):
+                    conn.close()
+            return
+
         if not self.db_url:
             raise RuntimeError("DATABASE_URL is not configured")
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
 
-            return psycopg.connect(self.db_url, row_factory=dict_row)
-        except ImportError:
+        try:
+            from backend.database.connection import get_db_pool
+
+            pool = get_db_pool(self.db_url)
+            with pool.get_connection() as conn:
+                yield conn
+        except Exception:
             import psycopg2
             from psycopg2.extras import RealDictCursor
 
-            return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def get_topic_chunks(self, topic_id: int, limit: int = 5) -> tuple[str, list[dict[str, Any]]]:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, title, course_id FROM topics WHERE id = %s;",
@@ -89,8 +113,6 @@ class AssessmentGenerator:
                 for row in rows:
                     chunks.append(row if isinstance(row, dict) else dict(row))
                 return topic_title, chunks
-        finally:
-            conn.close()
 
     def generate_questions(
         self,
@@ -189,9 +211,8 @@ class AssessmentGenerator:
         count: int = 3,
         target_difficulty: str | None = None,
     ) -> dict[str, Any]:
-        conn = self._get_connection()
-        try:
-            if not target_difficulty:
+        if not target_difficulty:
+            with self._connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT mastery_score FROM learner_mastery WHERE student_id = %s AND topic_id = %s;",
@@ -203,8 +224,6 @@ class AssessmentGenerator:
                         target_difficulty = "hard" if m_score >= 0.75 else "easy" if m_score < 0.4 else "medium"
                     else:
                         target_difficulty = "medium"
-        finally:
-            conn.close()
 
         topic_title, chunks = self.get_topic_chunks(topic_id)
         if not chunks:
@@ -220,8 +239,7 @@ class AssessmentGenerator:
         if not questions:
             raise RuntimeError(f"Failed to generate valid assessment questions for topic '{topic_title}'")
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -266,9 +284,6 @@ class AssessmentGenerator:
                     )
                     persisted_questions.append({**q, "id": question_id})
 
-                if hasattr(conn, "commit"):
-                    conn.commit()
-
                 return {
                     "assessment_id": assessment_id,
                     "student_id": student_id,
@@ -277,5 +292,3 @@ class AssessmentGenerator:
                     "assessment_type": assessment_type,
                     "questions": persisted_questions,
                 }
-        finally:
-            conn.close()
